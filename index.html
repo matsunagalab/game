@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eff4ec">
+<meta name="description" content="Browser games for learning amino acids, protein structure, force fields, metalloproteins and antibodies, on a phone or a computer.">
+<title>Games for learning biomolecules</title>
+<link rel="icon" href="data:,">
+<style>
+@font-face { font-family: 'Young Serif'; src: url('amino-acids-learner/assets/fonts/YoungSerif-latin.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Hanken Grotesk'; src: url('metalloprotein-learner/assets/fonts/HankenGrotesk-latin.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
+:root {
+  --paper: #eff4ec;
+  --ink: #232d5c;
+  --pencil: #56628c;
+  --raspberry: #c9396f;
+  --left: max(20px, env(safe-area-inset-left));
+  --right: max(20px, env(safe-area-inset-right));
+  /* Tall enough to read, short enough that the words under it stay on one screen. */
+  --poster: min(74vw, calc((100dvh - 262px) * .587), 300px);
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.45 'Hanken Grotesk', system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+header {
+  padding: calc(env(safe-area-inset-top) + clamp(20px, 5vh, 56px)) var(--right) 0 var(--left);
+}
+
+h1 {
+  font: 400 clamp(32px, 8.6vw, 58px)/1.06 'Young Serif', Georgia, serif;
+  letter-spacing: -.01em;
+  max-width: 14em;
+}
+
+header p { margin-top: 8px; max-width: 34em; }
+
+.shelf {
+  list-style: none;
+  display: flex;
+  gap: 14px;
+  padding: 20px var(--right) 14px var(--left);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: var(--left);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.shelf::-webkit-scrollbar { display: none; }
+
+.shelf li { flex: 0 0 var(--poster); scroll-snap-align: start; }
+
+.shelf a { display: block; color: inherit; text-decoration: none; border-radius: 16px; }
+.shelf a:focus-visible { outline: 3px solid var(--raspberry); outline-offset: 4px; }
+
+.shelf img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  box-shadow: 0 0 0 2px var(--ink);
+  transition: transform .18s cubic-bezier(.2, .9, .25, 1.12);
+}
+.shelf a:active img { transform: scale(.975); }
+
+.shelf strong {
+  display: block;
+  margin-top: 10px;
+  font: 400 19px/1.14 'Young Serif', Georgia, serif;
+}
+.shelf span { display: block; margin-top: 3px; font-size: 15.5px; line-height: 1.34; color: var(--pencil); }
+
+footer {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  padding: 10px var(--right) calc(env(safe-area-inset-bottom) + 18px) var(--left);
+  font-size: 15px;
+  color: var(--pencil);
+}
+footer a { color: var(--ink); text-underline-offset: 3px; padding: 6px 0; }
+
+@media (hover: hover) {
+  .shelf a:hover img { transform: translateY(-5px); }
+}
+
+@media (min-width: 1100px) {
+  .shelf {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 20px;
+    overflow: visible;
+    padding-top: 28px;
+  }
+}
+
+@media (max-height: 480px) {
+  :root { --poster: 150px; }
+  header { padding-top: calc(env(safe-area-inset-top) + 10px); }
+  h1 { font-size: 26px; max-width: none; }
+  header p { margin-top: 2px; max-width: none; font-size: 15px; }
+  .shelf { padding-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf img { transition: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Games for learning biomolecules</h1>
+  <p>Each game runs in the browser on a phone or a computer. There is nothing to install.</p>
+</header>
+
+<main>
+  <ul class="shelf">
+    <li><a href="amino-acids-learner/">
+      <img src="posters/amino-acids-learner.webp" width="640" height="1090" alt="">
+      <strong>Amino-acids learner</strong>
+      <span>Build real proteins one amino acid at a time, then watch them fold.</span>
+    </a></li>
+    <li><a href="protein-structure-learner/">
+      <img src="posters/protein-structure-learner.webp" width="640" height="1090" alt="">
+      <strong>Protein Structure Learner</strong>
+      <span>Four chapters of protein structure, from two hinges to a virus.</span>
+    </a></li>
+    <li><a href="force-field-parameters-learner/">
+      <img src="posters/force-field-parameters-learner.webp" width="640" height="1090" alt="" loading="lazy">
+      <strong>Force-Field Parameters of Biomolecular Simulation Learner</strong>
+      <span>Tune each term of the energy equation by hand, then see whether your numbers fold a helix.</span>
+    </a></li>
+    <li><a href="metalloprotein-learner/">
+      <img src="posters/metalloprotein-learner.webp" width="640" height="1090" alt="" loading="lazy">
+      <strong>Metalloprotein Learner</strong>
+      <span>Find what holds the metal in 21 real sites, and name the shape it makes.</span>
+    </a></li>
+    <li><a href="antibody-antigen-interaction-learner/">
+      <img src="posters/antibody-antigen-interaction-learner.webp" width="640" height="1090" alt="" loading="lazy">
+      <strong>Antibody-Antigen Interaction Learner</strong>
+      <span>Shape six loops so they grip an antigen, and find out what makes binding tight.</span>
+    </a></li>
+  </ul>
+</main>
+
+<footer>
+  <p>Progress stays in the browser you play in.</p>
+  <a href="https://github.com/matsunagalab/game">Source on GitHub</a>
+  <a href="https://github.com/matsunagalab/game/blob/main/THIRD_PARTY.md">Credits</a>
+</footer>
+</body>
+</html>

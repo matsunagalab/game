@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0A6C80">
+<title>Antibody-Antigen Interaction Learner</title>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+<svg id="links" aria-hidden="true"></svg>
+<div id="labels"></div>
+<div id="floaters" aria-live="polite"></div>
+<div id="chapter" aria-hidden="true"></div>
+
+<header id="bar" hidden>
+  <button id="back" class="pill" aria-label="Lessons"><span class="wide">Lessons</span><span class="narrow">‹</span></button>
+  <h2 id="bar-title"></h2>
+  <button id="notes-btn" class="pill">Notes</button>
+  <button id="sound-btn" class="pill" aria-pressed="true"><span class="wide"></span><span class="narrow"></span></button>
+</header>
+
+<aside id="ruler" hidden aria-label="Binding strength">
+  <p id="ruler-head">K<sub>D</sub></p>
+  <div id="ruler-track"></div>
+  <p id="ruler-foot">lower is tighter</p>
+</aside>
+
+<section id="dock" hidden>
+  <p id="coach" aria-live="polite"></p>
+  <div id="dock-row">
+    <div id="tray"></div>
+    <button id="bind" class="big" disabled>Bind</button>
+  </div>
+</section>
+
+<section id="sheet" hidden aria-live="polite"></section>
+
+<section id="title">
+  <h1>Antibody-<br>Antigen<br>Interaction<br>Learner</h1>
+  <p id="pitch">Shape six loops so they grip an antigen, and find out what makes binding tight.</p>
+  <div id="title-actions">
+    <button id="play" class="big"></button>
+    <button id="to-lessons" class="pill">Lessons</button>
+    <button id="to-gc" class="pill">Germinal center</button>
+  </div>
+  <p id="credit">Antibody: PDB 1IGT, Harris et al. 1997. Antigens are invented, and the energies are a teaching model.</p>
+</section>
+
+<section id="lessons" class="panel" hidden></section>
+<section id="notes" class="panel" hidden></section>
+<script>/*__JS__*/</script>
+</body>
+</html>

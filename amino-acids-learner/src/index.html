@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#eff4ec">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Amino-acids learner</title>
+<!-- Built with three.js (MIT). Fonts: Young Serif and Shantell Sans (SIL Open Font License 1.1).
+     Protein coordinates: wwPDB entries 1UAO, 1L2Y, 1VII, 1PIN, 1MSO, 1PGA, 1UBQ. -->
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<canvas id="gl" aria-label="A painted scene inside a cell"></canvas>
+
+<main id="ui">
+  <section id="title" class="page" hidden>
+    <h1>Amino-acids<br>learner</h1>
+    <p class="lede">Build real proteins one amino acid at a time, then watch them fold.</p>
+    <div class="actions">
+      <button id="title-start" class="stamp big">Start</button>
+      <button id="title-proteins" class="plain">Proteins</button>
+      <button id="title-guide" class="plain">Field guide</button>
+    </div>
+    <p class="touch-note" id="title-hint"></p>
+  </section>
+
+  <section id="hud" hidden>
+    <header class="bar">
+      <button id="hud-pause" class="icon" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
+      <div class="tape" id="tape" aria-label="Protein sequence so far"></div>
+      <div class="helpers" id="helpers" aria-label="Chaperones left"></div>
+    </header>
+    <div class="ask" id="ask">
+      <div class="prompt" id="prompt"></div>
+      <div class="clock" id="clockbar"><i id="clock"></i></div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <div id="labels"></div>
+    <div id="codon" class="codon"></div>
+    <div id="recall" class="recall" hidden></div>
+  </section>
+
+  <section id="fix" class="sheet" hidden>
+    <h2 id="fix-title"></h2>
+    <div class="compare" id="fix-compare"></div>
+    <p id="fix-note"></p>
+    <button id="fix-go" class="stamp">Try again</button>
+  </section>
+
+  <section id="hold" hidden>
+    <p id="hold-text">Hold to fold</p>
+    <div class="ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45"/><circle id="hold-ring" cx="50" cy="50" r="45" pathLength="1"/></svg></div>
+  </section>
+
+  <section id="done" class="sheet wide" hidden>
+    <p class="kicker" id="done-kicker"></p>
+    <h2 id="done-title"></h2>
+    <p id="done-about"></p>
+    <p class="stats" id="done-stats"></p>
+    <p class="aside" id="done-aside"></p>
+    <div class="actions">
+      <button id="done-next" class="stamp"></button>
+      <button id="done-list" class="plain">All proteins</button>
+    </div>
+  </section>
+
+  <section id="lost" class="sheet" hidden>
+    <h2>Misfolded</h2>
+    <p>The chaperones ran out, so the proteasome took the chain apart. Its amino acids go back into the pool.</p>
+    <div class="actions">
+      <button id="lost-retry" class="stamp">Build it again</button>
+      <button id="lost-list" class="plain">All proteins</button>
+    </div>
+  </section>
+
+  <section id="pause" class="sheet" hidden>
+    <h2>Paused</h2>
+    <div class="actions column">
+      <button id="pause-resume" class="stamp">Resume</button>
+      <button id="pause-sound" class="plain"></button>
+      <button id="pause-list" class="plain">All proteins</button>
+    </div>
+  </section>
+
+  <section id="proteins" class="page scroll" hidden>
+    <header class="pagehead">
+      <button class="back icon" data-back aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h2>Proteins</h2>
+    </header>
+    <div class="preview" id="protein-preview" aria-hidden="true"></div>
+    <ol id="protein-list"></ol>
+    <div class="practice">
+      <button id="practice" class="plain">Practice the amino acids you know least</button>
+      <button id="proteins-guide" class="plain">Field guide</button>
+    </div>
+    <div class="gobar"><button id="protein-go" class="stamp big"></button></div>
+  </section>
+
+  <section id="guide" class="page scroll" hidden>
+    <header class="pagehead">
+      <button class="back icon" data-back aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h2>Field guide</h2>
+      <p id="guide-count"></p>
+    </header>
+    <div id="guide-groups"></div>
+  </section>
+
+  <section id="specimen" class="sheet wide" hidden>
+    <button class="back icon" id="specimen-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="window" id="specimen-window" aria-hidden="true"></div>
+    <h2 id="specimen-name"></h2>
+    <p class="codes" id="specimen-codes"></p>
+    <div class="formula" id="specimen-formula"></div>
+    <p id="specimen-note"></p>
+    <p class="aside" id="specimen-letter"></p>
+    <p class="aside" id="specimen-codons"></p>
+  </section>
+
+  <p id="toast" hidden></p>
+  <div id="nogl" class="sheet" hidden>
+    <h2>This game needs WebGL 2</h2>
+    <p>Your browser could not start it. Turn on hardware acceleration, or open the game in a current version of Safari or Chrome.</p>
+  </div>
+</main>
+<script>/*__JS__*/</script>
+</body>
+</html>

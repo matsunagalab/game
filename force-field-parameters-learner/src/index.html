@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Force-Field Parameters of Biomolecular Simulation Learner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d2c5e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>/*FONTS*/</style>
+<style>/*CSS*/</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <header id="bar">
+    <button class="icon" id="back" aria-label="Back to the equation"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div id="titles"><span id="plate-no"></span><h1 id="plate-title"></h1></div>
+    <button id="file" aria-label="Open your force field file">ff26.frcmod</button>
+    <button class="icon" id="mute" aria-label="Sound on or off"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path id="wave" d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11"/></svg></button>
+  </header>
+  <aside id="note" aria-live="polite"></aside>
+  <div id="tags"></div>
+  <section id="dock">
+    <div id="custom"></div>
+    <div id="readouts"></div>
+    <div id="rulers"></div>
+    <div id="actions"></div>
+  </section>
+</div>
+
+<main id="front">
+  <div>
+    <h1>Force-Field Parameters of Biomolecular Simulation Learner</h1>
+    <p>Every simulation of a protein rests on one equation. Tune each term by hand, then see whether your numbers fold a helix.</p>
+  </div>
+  <div>
+    <div id="equation"></div>
+    <div id="front-row">
+      <button id="begin">Start</button>
+      <span id="front-hint">Or open any term of the equation. Sound on is best.</span>
+    </div>
+  </div>
+</main>
+
+<div id="verdict" role="dialog" aria-modal="true" aria-label="Reviewer 2's verdict">
+  <div id="v-card">
+    <p id="v-who">Decision from Reviewer 2</p>
+    <div id="v-stamp"></div>
+    <p id="v-comment"></p>
+    <p id="v-lesson"></p>
+    <div id="v-actions"><button id="v-stay">Keep tuning</button><button id="v-next">Next plate</button></div>
+  </div>
+</div>
+
+<div id="sheet" role="dialog" aria-modal="true" aria-label="Your force field file">
+  <div id="sheet-card">
+    <pre id="file-body"></pre>
+    <button id="file-copy">Copy the file</button><button id="file-close">Close</button>
+  </div>
+</div>
+
+<div id="crash" role="alertdialog" aria-label="The simulation crashed">
+  <div id="crash-card"><pre id="crash-log"></pre><button id="crash-go">Restart from the last checkpoint</button></div>
+</div>
+
+<div id="paper"></div>
+<script>/*JS*/</script>
+</body>
+</html>
