@@ -29,6 +29,6 @@ GitHub Pages serves the top level of `main` as it is. There is no automated buil
 3. Add a poster to `posters/` and an entry to the catalog's `index.html`.
 4. Add any new fonts or libraries to `THIRD_PARTY.md`.
 
-## Rights
+## License
 
-Third-party material is listed in [THIRD_PARTY.md](THIRD_PARTY.md).
+The code in this repository is under the [MIT License](LICENSE). Third-party material keeps its own license, and is listed in [THIRD_PARTY.md](THIRD_PARTY.md).

@@ -1,5 +1,7 @@
 # Third-party material
 
+The repository's own code is under the [MIT License](LICENSE). The items below keep their own licenses.
+
 ## Library
 
 The games bundle [three.js](https://threejs.org/), MIT License. Copyright © 2010-2026 three.js authors. See [LICENSES/three.js-MIT.txt](LICENSES/three.js-MIT.txt).
