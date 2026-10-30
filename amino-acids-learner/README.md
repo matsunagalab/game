@@ -1,41 +1,41 @@
 # Amino-acids learner
 
-実在のタンパク質をアミノ酸1個ずつ組み立て、最後に本物の立体構造へ折り畳むブラウザゲームです。three.js 製で、スマホの縦画面を基本に作りました。
+A browser game where you build real proteins one amino acid at a time, then fold them into their real 3D structures. It is built with three.js and designed first for a phone held upright.
 
-## 遊び方
+## How to play
 
-`index.html` をブラウザで開きます。この1ファイルだけで動き、ネットワークは要りません。
+Open `index.html` in a browser. This one file is the whole game, and it needs no network.
 
-1. リボソームが読むコドンの指示どおりに、アミノ酸を選びます（タップ。キーボードなら数字か1文字コード）
-2. 正解すると mRNA が3塩基進み、鎖が伸び、鉛筆画の細胞に水彩が広がります
-3. 間違えるとシャペロンが1つ減り、似たものとの違いを2D構造式で見せます。なくなると鎖は分解されます
-4. 終止コドンのあと、長押しで折り畳みます
+1. Pick the amino acid that the ribosome's codon asks for. Tap it, or press its number or one-letter code on a keyboard.
+2. A correct pick moves the mRNA forward three bases, extends the chain, and spreads watercolor over the pencil drawing of the cell.
+3. A wrong pick uses up one chaperone and shows how the two amino acids differ as 2D structures. When the chaperones run out, the chain is taken apart.
+4. After the stop codon, press and hold to fold the protein.
 
-出題は20種それぞれの習熟度で変わります。
+Questions change with how well you know each of the 20 amino acids:
 
-ラベルつき → 名前 → 3文字 → 1文字 → 特徴のヒント → 構造を見て名前を答える
+labeled options → name → three-letter code → one-letter code → a clue → name it from its structure
 
-進み具合はそのブラウザの localStorage に残ります。
+Progress is saved in the browser's localStorage.
 
-## 作り直し
-
-```sh
-sh tools/build.sh            # src/ から index.html を作る
-node tools/test_learn.mjs    # 学習ロジックと遺伝暗号の表のテスト
-```
-
-`node_modules` は Google Drive に同期させないよう `~/.cache/amino-acids-learner` に置きます。
-
-構造データ `src/data/structures.js` の作り直しには RDKit と numpy が要ります。
+## Rebuilding
 
 ```sh
-python -I tools/make_data.py PDBファイルのフォルダ src/data/structures.js
+sh tools/build.sh            # build index.html from src/
+node tools/test_learn.mjs    # test the learning logic and the genetic code table
 ```
 
-## データと素材
+Dependencies are installed in `~/.cache/amino-acids-learner`, outside the repository.
 
-- 立体構造: Protein Data Bank の 1UAO、1L2Y、1VII、1PIN（6〜39番）、1MSO、1PGA、1UBQ。NMR 構造は1番目のモデル
-- 二次構造: 上記ファイルの HELIX / SHEET 記録
-- アミノ酸20種の座標と2D構造式: RDKit で生成（pH 7 の双性イオン）
-- インスリンは B 鎖と A 鎖だけを作ります。C ペプチドは省いています。3I40 は B30 が Ala なので、野生型の 1MSO を使いました
-- three.js（MIT）、Young Serif と Shantell Sans（SIL Open Font License 1.1）
+Rebuilding the structure data in `src/data/structures.js` needs RDKit and numpy.
+
+```sh
+python -I tools/make_data.py <folder of PDB files> src/data/structures.js
+```
+
+## Data and materials
+
+- Structures: Protein Data Bank entries 1UAO, 1L2Y, 1VII, 1PIN (residues 6 to 39), 1MSO, 1PGA and 1UBQ. For NMR structures, the first model is used.
+- Secondary structure: the HELIX and SHEET records of those files.
+- Coordinates and 2D structures of the 20 amino acids: generated with RDKit, as zwitterions at pH 7.
+- Insulin is built from the B and A chains only, without the C peptide. Entry 1MSO was chosen because it has the wild-type sequence. Entry 3I40 has Ala at B30.
+- three.js (MIT), Young Serif and Shantell Sans (SIL Open Font License 1.1).

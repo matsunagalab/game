@@ -1,10 +1,10 @@
 # game
 
-生体分子を学ぶブラウザゲームを集めたリポジトリです。スマートフォンでもPCでも遊べます。
+Browser games for learning biomolecules. They run on phones and computers.
 
-カタログ: https://www.bio.ics.saitama-u.ac.jp/game/
+Catalog: https://www.bio.ics.saitama-u.ac.jp/game/
 
-| ゲーム | フォルダ | 作り直し |
+| Game | Folder | Rebuild |
 |---|---|---|
 | Amino-acids learner | `amino-acids-learner/` | `sh tools/build.sh` |
 | Protein Structure Learner | `protein-structure-learner/` | `node tools/build.mjs` |
@@ -12,23 +12,23 @@
 | Metalloprotein Learner | `metalloprotein-learner/` | `sh tools/build.sh` |
 | Antibody-Antigen Interaction Learner | `antibody-antigen-interaction-learner/` | `npm install && npm run build` |
 
-作り直しは各フォルダで実行します。
+Run the rebuild command inside each game's folder.
 
-## 公開のしくみ
+## How the site is published
 
-GitHub Pages が `main` の最上位をそのまま公開します。ビルドの自動処理はありません。組織のPagesに研究室サイトの独自ドメインが設定されているので、公開先は `www.bio.ics.saitama-u.ac.jp/game/` です。`matsunagalab.github.io/game/` からはここへ転送されます。
+GitHub Pages serves the top level of `main` as it is. There is no automated build. The organization's Pages site uses the lab's custom domain, so the catalog is at `www.bio.ics.saitama-u.ac.jp/game/`, and `matsunagalab.github.io/game/` redirects there.
 
-- 各ゲームは、フォルダ直下の `index.html` だけで動きます。作り直した `index.html` を commit すると公開されます。
-- カタログは最上位の `index.html` です。
-- `posters/` の画像は、スマートフォン縦画面（390×664）のタイトル画面です。
+- Each game is a single `index.html` at the top of its folder. Commit a rebuilt `index.html` to publish it.
+- The catalog is the top-level `index.html`.
+- The images in `posters/` are title screens taken at a phone size of 390×664.
 
-## ゲームを足すとき
+## Adding a game
 
-1. 新しいフォルダを作り、直下に `index.html` を置きます。
-2. localStorage のキーをゲームごとに変えます。全ゲームが同じ公開先を共有するので、同じキーだと保存データが混ざります。
-3. `posters/` に画像を足し、カタログの `index.html` に1項目足します。
-4. 使ったフォントやライブラリを `THIRD_PARTY.md` に足します。
+1. Create a new folder with an `index.html` at its top.
+2. Give the game its own localStorage key. All games share one site, so two games with the same key would mix their saved data.
+3. Add a poster to `posters/` and an entry to the catalog's `index.html`.
+4. Add any new fonts or libraries to `THIRD_PARTY.md`.
 
-## 権利
+## Rights
 
-第三者の素材は [THIRD_PARTY.md](THIRD_PARTY.md) にあります。
+Third-party material is listed in [THIRD_PARTY.md](THIRD_PARTY.md).
