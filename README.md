@@ -2,7 +2,7 @@
 
 生体分子を学ぶブラウザゲームを集めたリポジトリです。スマートフォンでもPCでも遊べます。
 
-カタログ: https://matsunagalab.github.io/game/
+カタログ: https://www.bio.ics.saitama-u.ac.jp/game/
 
 | ゲーム | フォルダ | 作り直し |
 |---|---|---|
@@ -16,7 +16,7 @@
 
 ## 公開のしくみ
 
-GitHub Pages が `main` の最上位をそのまま公開します。ビルドの自動処理はありません。
+GitHub Pages が `main` の最上位をそのまま公開します。ビルドの自動処理はありません。組織のPagesに研究室サイトの独自ドメインが設定されているので、公開先は `www.bio.ics.saitama-u.ac.jp/game/` です。`matsunagalab.github.io/game/` からはここへ転送されます。
 
 - 各ゲームは、フォルダ直下の `index.html` だけで動きます。作り直した `index.html` を commit すると公開されます。
 - カタログは最上位の `index.html` です。
