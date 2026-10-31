@@ -28,8 +28,17 @@ All fonts are licensed under the SIL Open Font License 1.1. See [LICENSES/OFL-1.
 | Zen Kaku Gothic New | 2022 The Zen Project Authors | Physical chemistry of biomolecules learner |
 | IM Fell English | 2010 Igino Marini | Molecular biology of the cell learner |
 | Cormorant Upright | 2015 The Cormorant Project Authors | Mechanisms of catalytic reactions by biomolecules learner |
-| Alegreya Sans | 2013 The Alegreya Sans Project Authors | Mechanisms of catalytic reactions by biomolecules learner |
+| Alegreya Sans | 2013 The Alegreya Sans Project Authors | Mechanisms of catalytic reactions by biomolecules learner, Prediction mechanism of AlphaFold2 learner |
+| Fraunces | 2020 The Fraunces Project Authors | Prediction mechanism of AlphaFold2 learner |
 
 ## Structures
 
 Protein coordinates come from the [Protein Data Bank](https://www.wwpdb.org/), whose data are available under CC0 1.0. Each game names the entries it uses in its own files or on screen.
+
+## Other data
+
+The Prediction mechanism of AlphaFold2 learner uses these datasets. See its README for the entries.
+
+- [AlphaFold Protein Structure Database](https://alphafold.ebi.ac.uk/) predictions, CC BY 4.0, reduced to the fields the game draws. Varadi et al., Nucleic Acids Res. 2022.
+- [UniProt](https://www.uniprot.org/) annotations, CC BY 4.0.
+- [Pfam](https://www.ebi.ac.uk/interpro/) alignments, CC0 1.0.

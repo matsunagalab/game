@@ -1,0 +1,6 @@
+{
+  "name": "prediction-mechanism-of-alphafold2-learner",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node tools/build.mjs", "test": "node tools/test.mjs" }
+}

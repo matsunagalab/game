@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#e9f2f6">
+<meta name="description" content="Work out the ideas behind AlphaFold2 by hand, on real alignments and real structures, in a world of cut paper. This game does not run AlphaFold2.">
+<title>Prediction mechanism of AlphaFold2 learner</title>
+<link rel="icon" href="data:,">
+<style>/*FONTS*//*CSS*/</style>
+</head>
+<body>
+<canvas id="gl" aria-label="Paper triangles, one for each residue of a protein"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<section id="title" hidden>
+  <h1>Prediction mechanism of AlphaFold2 learner</h1>
+  <p class="by">Work out the ideas behind AlphaFold2 by hand, on real proteins. This game does not run AlphaFold2.</p>
+  <div class="foot">
+    <button id="begin" class="btn"></button>
+    <button id="to-map" class="plain">All chapters</button>
+    <button class="icon" data-sound aria-label="Sound"></button>
+  </div>
+</section>
+
+<section id="map" hidden>
+  <header><button class="icon" data-home aria-label="Back to the title">&#8249;</button><h2>Ten chapters</h2></header>
+  <ol id="chapters"></ol>
+  <p class="credit">AlphaFold2 models and confidence: AlphaFold Protein Structure Database, CC-BY-4.0 (Jumper et al. 2021; Varadi et al. 2022). Alignments: Pfam, CC0. Structures: Protein Data Bank, CC0. Chapter notes give the sources.</p>
+</section>
+
+<section id="play" hidden>
+  <header id="bar">
+    <button class="icon" data-map aria-label="All chapters">&#8249;</button>
+    <div class="mid"><h2 id="ctitle"></h2><div class="sub"><span id="cnum"></span><span id="cfolds" class="folds"></span></div></div>
+    <button class="icon" id="note-open" aria-label="Chapter note"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7"/></svg></button>
+    <button class="icon" data-sound aria-label="Sound"></button>
+  </header>
+  <div id="card" class="sheet">
+    <div id="tagline"></div>
+    <p id="say" aria-live="polite"></p>
+    <div id="reads"></div>
+    <div id="ctrl"></div>
+  </div>
+</section>
+
+<div id="note" class="over" hidden><div class="sheet"><div id="note-body"></div><div class="row"><button id="note-restart" class="btn quiet">Start chapter again</button><button id="note-close" class="btn">Close</button></div></div></div>
+<div id="done" class="over" hidden><div class="sheet"><div id="done-folds" class="fold-big"></div><h3 id="done-title"></h3><p id="done-principle"></p><p class="small"><i>Now try saying that to a friend, in your own words, without looking.</i></p><p id="done-goals" class="small"></p><div class="row"><button id="done-again" class="btn quiet">Stay here</button><button id="done-next" class="btn">Next chapter</button></div></div></div>
+<script>/*JS*/</script>
+</body>
+</html>

@@ -12,6 +12,7 @@ Catalog: https://www.bio.ics.saitama-u.ac.jp/game/
 | Mechanisms of catalytic reactions by biomolecules learner | `mechanisms-of-catalytic-reactions-by-biomolecules-learner/` | `node tools/build.mjs` |
 | Molecular biology of the cell learner | `molecular-biology-of-the-cell-learner/` | `node tools/build.mjs` |
 | Force-Field Parameters of Biomolecular Simulation Learner | `force-field-parameters-learner/` | `npm install && npm run build` |
+| Prediction mechanism of AlphaFold2 learner | `prediction-mechanism-of-alphafold2-learner/` | `node tools/build.mjs` |
 | Metalloprotein Learner | `metalloprotein-learner/` | `sh tools/build.sh` |
 | Antibody-Antigen Interaction Learner | `antibody-antigen-interaction-learner/` | `npm install && npm run build` |
 

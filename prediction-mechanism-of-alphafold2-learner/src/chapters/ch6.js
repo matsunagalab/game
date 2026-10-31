@@ -1,0 +1,224 @@
+// Chapter 6. The real attention formula of Algorithm 22, on real frames, with live numerical checks of invariance.
+import * as THREE from 'three';
+import { Flock, STOCK, Threads } from '../world.js';
+import { apply, applyInverse, framesOf, moveFrames, movePoints, rotationAxisAngle } from '../science/frames.js';
+import { ipaWeights, maxChange, rawWeights } from '../science/ipa.js';
+import { ambient, fmt, frameBoard, theFamily } from './common.js';
+
+const GAMMA = 34;
+const LIFT = 22;
+
+export default {
+  id: 'ipa',
+  title: 'Invariant point attention',
+  tease: 'Aim attention with a point in space, then turn the whole molecule and see the numbers refuse to change.',
+  principle: 'A rotated protein is the same protein, and invariant point attention is built to give the same answer in any orientation. Its attention reads the molecule\'s geometry only through distances between points placed in each residue\'s own frame, and those survive any rotation, so the update turns with the molecule. DeepMind found this helpful but not essential.',
+  goals: ['Aim attention at three residues.', 'Say correctly what survives a turn.', 'Get the new case right first time, answer and reason.'],
+  note: `<h3>Chapter note</h3>
+    <p><b>The formula here</b> is Algorithm 22, line 7: a<sub>ij</sub> = softmax<sub>j</sub>( w<sub>L</sub>( b<sub>ij</sub> − (γ w<sub>C</sub>/2) Σ<sub>p</sub> |T<sub>i</sub>∘q<sub>ip</sub> − T<sub>j</sub>∘k<sub>jp</sub>|² ) ), with w<sub>C</sub> = √(2/(9N<sub>q</sub>)), w<sub>L</sub> = √(1/3), and points in nanometres. The scalar query-key term is left out.</p>
+    <p><b>Real sizes.</b> IPA has 12 heads, each with 16-dimensional scalar queries and values, 4 query points and 8 value points (Algorithm 22; config.py). Points are predicted by the network. Here you place one, and each residue's key point sits at its Cα. The γ of each head is learned. It is set to ${GAMMA} here so that attention is sharp enough to see.</p>
+    <p><b>Why it is invariant.</b> Under a global rigid motion, T<sub>global</sub> cancels in the distance, and it cancels again when the value points are brought back into frame i (Supplement equations 3 to 6). So the update in local frames is unchanged, and the resulting structure moves with the molecule. That is <b>equivariance</b>.</p>
+    <p><b>Rigid motion</b> here means rotation and translation, not reflection. IPA is not invariant to a mirror.</p>
+    <p><b>How much it matters.</b> The authors write that "equivariance in the network is not essential", because the single ablation of IPA "is still a very accurate structure prediction network", and they call that a surprise (Supplement 1.13.3). That ablation predicts frames by one linear projection of the single representation, with no iteration inside the module. Recycling stays on, so predicted C-beta distances still reach the pair table between passes. But removing IPA and recycling together cost much more than removing recycling alone: about 8 in lDDT-Cα at its worst, by eye from Supplementary Fig. 10, and the authors warn this "must be interpreted with caution". The main paper's stated aim for IPA is different from symmetry alone: it says the module can "implicitly reason about the unrepresented side-chain atoms".</p>
+    <p class="small">Sources: Jumper et al., Nature 2021, Supplement 1.8.2 and 1.13.3. alphafold/model/folding.py.</p>`,
+
+  setup(run) {
+    const f = run.state.f = theFamily(), che = f.che, n = che.ca.length, mean = [0, 0, 0];
+    for (const p of che.ca) { mean[0] += p[0] / n; mean[1] += p[1] / n; mean[2] += p[2] / n; }
+    run.state.frames = che.frames.map((T) => ({ R: T.R, t: [T.t[0] - mean[0], T.t[1] - mean[1], T.t[2] - mean[2]] }));
+    run.state.ca = run.state.frames.map((T) => T.t);
+    run.state.keys = run.state.frames.map(() => [[0, 0, 0]]);
+    run.state.who = (i) => `${che.seq[i]}${che.nums[i]}`;
+  },
+  stages: [aim, turn, sort, mirror, check],
+};
+
+function scene(run) {
+  const { world } = run, { f, frames } = run.state, n = frames.length;
+  const flock = run.scoped(new Flock(world, n, f.shape, { size: 1.8 }));
+  const pale = new THREE.Color('#a9cbdc');
+  flock.paint(() => pale);
+  const pose = { spin: new THREE.Quaternion(), group: new THREE.Matrix4() };
+  const place = () => {
+    pose.group.compose(new THREE.Vector3(0, LIFT, 0), pose.spin, new THREE.Vector3(1.05, 1.05, 1.05));
+    frames.forEach((T, i) => flock.place(i, T.R, T.t, pose.group));
+    flock.commit();
+  };
+  place();
+  frameBoard(run, 58, 62, { polar: 0.18, at: [0, LIFT - 6, 0], seconds: 0 });
+  world.shadowSpan(70);
+  run.scoped({ dispose: () => world.shadowSpan(80) });
+  const paint = (w, base = pale) => {
+    const top = Math.max(...w), c = new THREE.Color();
+    flock.paint((i) => c.copy(base).lerp(STOCK.high, Math.min(1, (w[i] / top) ** 0.7)).clone());
+  };
+  return { flock, pose, place, paint };
+}
+
+async function aim(run) {
+  const { ui, world, sound } = run, { frames, keys, who } = run.state, n = frames.length;
+  const s = scene(run);
+  const i = run.state.frames.length > 50 ? 50 : 0;
+  s.flock.mesh.setColorAt(i, STOCK.poor);
+  ui.tags('real', 'game');
+  ui.reads([]);
+  await run.line('Chapter 3 gave attention: a share of 100% spread over other residues. Here it gets a new way to choose, using positions in space.');
+  const groupInv = () => s.pose.group.clone().invert();
+  let q = [6, 2, 3];
+  const dot = run.scoped(new Threads(world, 2, { width: 0.5 }));
+  const update = () => {
+    const w = ipaWeights(frames, i, [q], keys, { gamma: GAMMA });
+    s.paint(w);
+    s.flock.mesh.setColorAt(i, STOCK.poor);
+    s.flock.mesh.instanceColor.needsUpdate = true;
+    dot.clear();
+    const g = apply(frames[i], q);
+    dot.add(frames[i].t, g, '#ff7d45', 0.5, s.pose.group);
+    world.shadowDirty = 1;
+    return w;
+  };
+  await run.line(`The orange triangle is residue ${who(i)}. It places one <b>query point</b> near itself, in its own frame. Each other residue offers a <b>key point</b>. Close points earn more attention.`);
+  const targets = [15, 70, 100].filter((t) => t < n);
+  let hit = 0;
+  const lab = run.scoped(ui.label('', 'big'));
+  run.scoped({ dispose: () => lab.remove() });
+  const pos = (t) => new THREE.Vector3(...frames[t].t).applyMatrix4(s.pose.group);
+  run.tick(() => { if (hit < targets.length) lab.at(world.project(pos(targets[hit]))); else lab.el.style.display = 'none'; });
+  const prompt = () => { lab.set(who(targets[hit])); ui.say(`Drag anywhere to move the query point, and give ${who(targets[hit])} the biggest share.`); };
+  prompt();
+  run.probe.target = () => world.project(pos(targets[Math.min(hit, targets.length - 1)]));
+  await run.until((done) => {
+    const at = (x, y) => {
+      const c = pos(targets[hit]), p = world.onPlane(x, y, c.y);
+      if (!p) return;
+      const local = p.applyMatrix4(groupInv()).toArray();
+      q = applyInverse(frames[i], local);
+      const w = update();
+      sound.pick(Math.floor(q[0] + 30) % 6);
+      const best = w.indexOf(Math.max(...w));
+      ui.reads([{ value: `${fmt(w[targets[hit]] * 100, 1)}%`, label: `share to ${who(targets[hit])}` }, { value: who(best), label: 'gets the most' }]);
+      return best === targets[hit];
+    };
+    const off = run.pointer({ down: at, move: at, up: (x, y) => { if (at(x, y)) { sound.fold(); hit += 1; if (hit === targets.length) { off(); done(); } else prompt(); } } });
+  });
+  run.reach(1);
+  ui.tags('paper');
+  await run.line('You aimed attention through space. In AlphaFold2 the network itself places these points, many at once, and adds them to the attention you met in chapter 3. This is <b>invariant point attention</b>, or IPA.');
+  run.state.q = q;
+  run.state.i = i;
+}
+
+async function turn(run) {
+  const { ui, world, sound } = run, { frames, keys, ca, who } = run.state, n = frames.length;
+  const s = scene(run), i = run.state.i ?? 50, q = run.state.q ?? [6, 2, 3];
+  const w0 = ipaWeights(frames, i, [q], keys, { gamma: GAMMA }), rawBase = rawWeights(ca, i);
+  s.paint(w0);
+  ui.tags('game');
+  ui.reads([]);
+  let useRaw = false;
+  let angle = 0, axis = [0.3, 1, 0.2];
+  const q3 = new THREE.Quaternion();
+  const update = () => {
+    const R = rotationAxisAngle(axis, angle), T = { R, t: [13, -7, 21] };
+    const fr = moveFrames(frames, T), pts = movePoints(ca, T);
+    const a = ipaWeights(fr, i, [q], keys, { gamma: GAMMA }), b = rawWeights(pts, i);
+    const dI = maxChange(a, w0), dR = maxChange(b, rawBase);
+    q3.setFromAxisAngle(new THREE.Vector3(...axis).normalize(), angle);
+    s.pose.spin.copy(q3);
+    s.place();
+    s.paint(useRaw ? b : a);
+    world.shadowDirty = 1;
+    ui.reads([{ value: useRaw ? fmt(dR, 3) : dI.toExponential(1), label: `largest change in any share, ${useRaw ? 'raw coordinates' : 'IPA'}` }, { value: `${Math.round((angle * 180) / Math.PI) % 360}°`, label: 'turned' }]);
+    run.state.turned = { dI, dR };
+  };
+  update();
+  await run.line('Now turn the whole molecule. Each share of attention gets recomputed from scratch, from the turned coordinates.');
+  ui.say('Drag to turn, then try a simple rule that scores residues on raw x and y coordinates.');
+  let tried = false, turned = 0;
+  await run.until((done) => {
+    const nxt = ui.button('Next', () => done(), { id: 'next' });
+    nxt.disabled = true;
+    const tog = ui.button('Use raw coordinates', (b) => { useRaw = !useRaw; tried = true; b.textContent = useRaw ? 'Use IPA' : 'Use raw coordinates'; update(); }, { quiet: true, id: 'raw' });
+    ui.ctrl(tog, nxt);
+    let last = null;
+    run.pointer({ down: (x, y) => { last = [x, y]; }, move: (x, y) => {
+      if (!last) return;
+      const dx = x - last[0], dy = y - last[1];
+      last = [x, y];
+      angle += (dx + dy) * 0.012;
+      axis = [dy * 0.002 + 0.3, 1, 0.2];
+      turned += Math.abs(dx) + Math.abs(dy);
+      update();
+      sound.rustle(1, 0.012);
+      if (tried && turned > 120) nxt.disabled = false;
+    } });
+  });
+  ui.ctrl();
+  const t = run.state.turned;
+  ui.reads([{ value: t.dI.toExponential(1), label: 'IPA: change after turning' }, { value: fmt(t.dR, 3), label: 'raw coordinates: change after turning' }]);
+  await run.line('With IPA the shares changed only by rounding error in the last digits of the arithmetic. With raw coordinates, turning the molecule changed the answer.');
+  await run.line('<b>Invariant</b> means unchanged. The shares are invariant to a turn. The move each residue then makes turns along with the molecule, and that is called <b>equivariant</b>.');
+  await run.line('A rotated protein is the same protein, and IPA gives the same answer in any orientation, by construction.');
+  ui.tags('paper');
+  await run.line('Is that essential? DeepMind found it was not. With IPA removed, frames came straight from one linear layer, with no attention in the module, and the network stayed very accurate. They called that a surprise. It still received earlier predictions and templates in forms that do not depend on orientation. Where a module reads coordinates directly, this is a clean way to keep orientation from mattering.');
+  ui.tags('game');
+  await run.line(`It works because distances do not care which way you hold the molecule, and each residue's points are carried along by its own frame. The trick is that ${who(i)}'s query point travels with ${who(i)}.`);
+}
+
+async function sort(run) {
+  const { ui, sound } = run, { frames, ca, who } = run.state;
+  ambient(run);
+  const a = 20, b = 80, T = { R: rotationAxisAngle([1, 2, -1], 1.1), t: [10, 5, -3] };
+  const m = moveFrames(frames, T), p = movePoints(ca, T);
+  const dist = (x, y) => Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  const before = { x: ca[a][0], d: dist(ca[a], ca[b]), l: applyInverse(frames[a], ca[b]) };
+  const after = { x: p[a][0], d: dist(p[a], p[b]), l: applyInverse(m[a], p[b]) };
+  ui.reads([]);
+  ui.tags('game');
+  let right = 0;
+  const cards = [
+    { q: `The x coordinate of ${who(a)}. Does it survive a turn?`, stays: false, v: `${fmt(before.x, 2)} became ${fmt(after.x, 2)}.` },
+    { q: `The distance from ${who(a)} to ${who(b)}. Does it survive a turn?`, stays: true, v: `${fmt(before.d, 6)} stayed ${fmt(after.d, 6)}.` },
+    { q: `Where ${who(b)} sits as seen from the frame of ${who(a)}. Does it survive a turn?`, stays: true, v: `(${before.l.map((v) => v.toFixed(3)).join(', ')}) stayed (${after.l.map((v) => v.toFixed(3)).join(', ')}).` },
+  ];
+  for (const c of cards) {
+    const ok = await run.choose(c.q, [
+      { text: 'It stays the same', right: c.stays, why: c.stays ? `Right. ${c.v}` : `Not this one. ${c.v}` },
+      { text: 'It changes', right: !c.stays, why: !c.stays ? `Right. ${c.v}` : `Not this one. ${c.v}` },
+    ]);
+    if (ok) right += 1;
+    sound.tap();
+  }
+  if (right === cards.length) run.reach(2);
+  ui.reads([]);
+  await run.line('So the safe things to compute with are distances, and positions seen from a residue\'s own frame. IPA reads geometry only in these ways.');
+}
+
+async function mirror(run) {
+  const { ui } = run, { frames, keys, f } = run.state, i = run.state.i ?? 50, q = run.state.q ?? [6, 2, 3], che = f.che;
+  ambient(run);
+  ui.tags('game');
+  const w = (p) => p.map((x) => [-x[0], -x[1], -x[2]]);
+  const F = framesOf({ n: w(che.n), ca: w(che.ca), c: w(che.c) });
+  const a = ipaWeights(frames, i, [q], keys, { gamma: GAMMA }), b = ipaWeights(F, i, [q], keys, { gamma: GAMMA });
+  ui.reads([{ value: maxChange(a, b).toFixed(3), label: 'largest change in any share, through a mirror' }]);
+  await run.line('A rotation changed nothing. A mirror is different: it changes the shares by far more than rounding error. Chapter 7 is about that.');
+  ui.reads([]);
+}
+
+async function check(run) {
+  const { ui } = run;
+  ambient(run);
+  ui.tags('model');
+  const first = await run.choose('A new case. A team adds each residue\'s height above the lab bench as an input to their network. What goes wrong?', [
+    { text: 'Nothing. Height is real information.', right: false, why: 'Height depends on how the molecule happens to be held, so it says nothing about the protein itself.' },
+    { text: 'Answers now depend on orientation, so the same protein can get different predictions.', right: true, why: 'Right. It is like the raw x coordinate. Turning the molecule changes the input, and so the answer.' },
+    { text: 'It would only slow the network down.', right: false, why: 'Speed is not the issue. The network loses its guarantee of treating every orientation alike.' },
+  ]);
+  const second = await run.choose('Which pair of numbers could safely go into IPA instead?', [
+    { text: 'The distance between two residues, and each one\'s position in the other\'s frame.', right: true, why: 'Yes. Both survive any rotation and translation.' },
+    { text: 'The x coordinate and the y coordinate.', right: false, why: 'Both change when you turn the molecule.' },
+    { text: 'The direction of each residue\'s first axis, in lab coordinates.', right: false, why: 'A direction in lab coordinates turns with the molecule. Only its relation to other frames is safe.' },
+  ]);
+  if (first && second) run.reach(3);
+}
