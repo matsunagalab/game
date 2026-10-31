@@ -1,0 +1,137 @@
+// The seven chapters. Each lists its stations, what travels between them, and what it teaches.
+// Coordinates are in the unit disk of the window, y upward. The centrosome is the hub of every track.
+export const HUB = { x: 0.1, y: 0.1 };
+
+export const STATIONS = {
+  nucleus: { x: -0.3, y: -0.26, label: 'Nucleus' },
+  ribo: { x: -0.66, y: 0.42, label: 'Ribosomes' },
+  ribo2: { x: 0.34, y: -0.74, label: 'Ribosomes' },
+  er: { x: -0.66, y: -0.24, label: 'Rough ER' },
+  golgi: { x: 0.46, y: 0.03, label: 'Golgi' },
+  membrane: { x: 0.8, y: 0.34, label: 'Cell surface' },
+  surface2: { x: -0.2, y: 0.84, label: 'Cell surface' },
+  lyso: { x: 0.5, y: 0.6, label: 'Lysosome' },
+  endo: { x: -0.2, y: 0.5, label: 'Endosome' },
+  mito: { x: 0.68, y: -0.42, label: 'Mitochondrion' },
+};
+
+// Glass regions as ellipses: x, y, rx, ry, angle, colour index. Later ones sit on top.
+export const GLASS = [
+  ...[[-0.66, -0.24], [-0.6, 0.02], [-0.64, -0.5], [-0.42, -0.68], [-0.14, -0.72], [-0.48, 0.2]].map(([x, y]) => [x, y, 0.19, 0.13, Math.atan2(y + 0.26, x + 0.3) + 1.57, 2]),
+  [-0.3, -0.26, 0.4, 0.38, 0, 1],
+  [-0.2, -0.16, 0.11, 0.1, 0, 3],
+  ...[[0.42, 0.14, 0.2, 0.04], [0.46, 0.04, 0.23, 0.045], [0.45, -0.06, 0.21, 0.04], [0.41, -0.15, 0.16, 0.035]].map(([x, y, rx, ry]) => [x, y, rx, ry, 0.35, 4]),
+  [0.68, -0.42, 0.2, 0.085, 0.7, 5],
+  [-0.66, 0.42, 0.1, 0.09, 0, 6],
+  [0.34, -0.74, 0.09, 0.08, 0, 6],
+  [0.5, 0.6, 0.13, 0.13, 0, 7],
+  [-0.2, 0.5, 0.11, 0.11, 0, 8],
+];
+
+export const MITOSIS_GLASS = [
+  [0, 0, 0.6, 0.86, 0, 9],
+  [0, 0.76, 0.13, 0.13, 0, 10],
+  [0, -0.76, 0.13, 0.13, 0, 10],
+];
+
+export const CHAPTERS = [
+  {
+    id: 'message',
+    title: 'The message leaves the nucleus',
+    lede: 'Most genes stay in the nucleus. Their copies, messenger RNAs, leave through pores to find ribosomes. Most drift, but some ride microtubules to distant parts of the cell, and here these all start at the centrosome: the gold star.',
+    goal: 'Drag from the star to an organelle, or tap the organelle, to grow a microtubule. Connect the nucleus and the ribosomes.',
+    stations: ['nucleus', 'ribo'],
+    routes: [{ path: ['nucleus', 'ribo'], every: 1.1, colors: ['#ffd76a', '#ffffff'] }],
+    budget: 3,
+    target: 14,
+    calm: true,
+    note: 'Real mRNAs mostly drift by diffusion, and some are carried. Inward trips use dynein and outward trips use kinesin, because in this kind of cell microtubules keep their minus ends at the centrosome.',
+    term: 'Motors read direction from the track: most kinesins go to the plus end, dynein to the minus end.',
+  },
+  {
+    id: 'rescue',
+    title: 'Tracks that fall apart',
+    lede: 'A growing microtubule is capped by GTP-bound tubulin. Lose the cap and it shrinks fast: a catastrophe. Cells use this to search the space around them.',
+    goal: 'Tracks now flash before they collapse. Tap a flashing track to rescue it. A fallen track ties up its tubulin for a few seconds.',
+    stations: ['nucleus', 'ribo', 'ribo2'],
+    routes: [
+      { path: ['nucleus', 'ribo'], every: 1.6, colors: ['#ffd76a', '#ffffff'] },
+      { path: ['nucleus', 'ribo2'], every: 1.6, colors: ['#ffd76a', '#ffffff'] },
+    ],
+    budget: 3,
+    target: 20,
+    catastrophe: 5,
+    note: 'This switching between growth and shrinkage is called dynamic instability. A real rescue comes after shrinking starts, when the end regains a cap, by chance or helped by proteins. Here your tap stands in for it, a little early. Fallen tubulin carries GDP and must reload with GTP before it can build again.',
+    term: 'Dynamic instability lets a cell rebuild its tracks within minutes.',
+  },
+  {
+    id: 'secrete',
+    title: 'The secretory road',
+    lede: 'A protein for export, such as an antibody, is built on the rough ER and passes through the Golgi to the cell surface. Each stop changes it.',
+    goal: 'Keep ER, Golgi and cell surface connected. Deliver every vesicle in order.',
+    stations: ['er', 'golgi', 'membrane'],
+    routes: [{ path: ['er', 'golgi', 'membrane'], every: 1.1, colors: ['#7fe8d0', '#8cf08a', '#ffd76a'] }],
+    budget: 3,
+    target: 18,
+    catastrophe: 6,
+    note: 'Vesicles bud from the ER, merge into larger carriers, and move inward on dynein to the Golgi, which in animal cells sits beside the centrosome. There sugars on the protein are trimmed and rebuilt. Kinesin then takes the finished cargo out.',
+    term: 'The route is ER, then Golgi, then surface: the secretory pathway.',
+  },
+  {
+    id: 'sort',
+    title: 'Two addresses',
+    lede: 'The Golgi is a sorting office. Enzymes tagged with mannose-6-phosphate go to the lysosome, and most other cargo goes on to the surface. You now have fewer tracks than places.',
+    goal: 'You can keep only 2 tracks. Tap a healthy track to remove it, and swap to whichever queue is growing.',
+    stations: ['golgi', 'membrane', 'lyso'],
+    routes: [
+      { path: ['golgi', 'lyso'], every: 2, colors: ['#ff8ad0', '#ff8ad0'] },
+      { path: ['golgi', 'membrane'], every: 2, colors: ['#ffd76a', '#ffd76a'] },
+    ],
+    budget: 2,
+    target: 18,
+    catastrophe: 9,
+    note: 'Receptors in the trans-Golgi catch the mannose-6-phosphate tag and pack these enzymes into vesicles bound for the lysosome by way of an endosome. Without the tag, enzymes are sent the wrong way, and lysosomes fill with undigested material, as in I-cell disease.',
+    term: 'A sugar tag works as a postal code.',
+  },
+  {
+    id: 'uptake',
+    title: 'Bringing cholesterol in',
+    lede: 'LDL particles carry cholesterol. They bind receptors at the surface, enter in clathrin-coated vesicles, and reach the lysosome through the endosome. The receptors go back to work.',
+    goal: 'Carry LDL inward to the lysosome, and return each receptor to the surface.',
+    stations: ['surface2', 'endo', 'lyso'],
+    routes: [
+      { path: ['surface2', 'endo', 'lyso'], every: 1.3, colors: ['#ffb45a', '#ffb45a', '#ff8ad0'] },
+      { path: ['endo', 'surface2'], every: 2, colors: ['#9fd6ff', '#9fd6ff'] },
+    ],
+    budget: 3,
+    target: 20,
+    catastrophe: 5.5,
+    note: 'The acidic endosome makes LDL let go of its receptor, so the receptor can be reused many times. Brown and Goldstein found this pathway using cells from people with inherited high cholesterol, whose receptors are faulty.',
+    term: 'Acid makes LDL let go of its receptor in the endosome.',
+  },
+  {
+    id: 'power',
+    title: 'Motors need fuel',
+    lede: 'Each step of a kinesin burns one ATP, and in most cells mitochondria make most of it. Now every trip spends fuel, so you must also keep a mitochondrion connected.',
+    goal: 'Keep the ATP gauge up while the secretory road runs. Low ATP slows every motor.',
+    stations: ['er', 'golgi', 'membrane', 'mito'],
+    routes: [{ path: ['er', 'golgi', 'membrane'], every: 1.5, colors: ['#7fe8d0', '#8cf08a', '#ffd76a'] }],
+    budget: 3,
+    target: 16,
+    catastrophe: 8,
+    atp: true,
+    note: 'Connecting a mitochondrion here stands in for bringing it close: cells carry mitochondria on these same tracks to where energy is used. A kinesin takes one 8 nm step per ATP.',
+    term: 'Kinesin transport is paid for, 8 nm at a time.',
+  },
+  {
+    id: 'mitosis',
+    title: 'One window becomes two',
+    lede: 'The nuclear envelope has broken down. Copied chromosomes lie free, each a pair of sister chromatids, and two centrosomes form the poles. The two sisters must be caught from opposite poles.',
+    goal: 'Tap each sister chromatid to send a microtubule from the nearest pole. A pair held from both sides is under tension, and stays.',
+    mitosis: true,
+    pairs: 5,
+    catastrophe: 4.5,
+    note: 'Unattached kinetochores send a stop signal, the spindle assembly checkpoint, until every chromosome is held from both sides. Only then do the sisters part, so each daughter gets a full set.',
+    term: 'Tension steadies correct attachments. Loose ones are released to try again.',
+  },
+];

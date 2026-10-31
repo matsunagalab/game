@@ -24,6 +24,9 @@ All fonts are licensed under the SIL Open Font License 1.1. See [LICENSES/OFL-1.
 | Courier Prime | 2015 The Courier Prime Project Authors | Force-Field Parameters Learner |
 | Atkinson Hyperlegible | 2020 Braille Institute of America, Inc. | Antibody-Antigen Interaction Learner |
 | Bagel Fat One | 2022 The Bagel Fat Project Authors | Antibody-Antigen Interaction Learner |
+| Shippori Mincho | 2021 The Shippori Mincho Project Authors | Physical chemistry of biomolecules learner |
+| Zen Kaku Gothic New | 2022 The Zen Project Authors | Physical chemistry of biomolecules learner |
+| IM Fell English | 2010 Igino Marini | Molecular biology of the cell learner |
 
 ## Structures
 

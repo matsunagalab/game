@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0d0c13">
+<meta name="description" content="A living cell as a rose window. Grow microtubules, carry cargo between organelles, and divide the cell in two.">
+<title>Molecular biology of the cell learner</title>
+<link rel="icon" href="data:,">
+<style>/*__FONTS__*//*__CSS__*/</style>
+</head>
+<body>
+<canvas id="gl" aria-label="A stained glass rose window showing a living cell"></canvas>
+<div id="tags"></div>
+
+<section id="title" hidden>
+  <h1>Molecular biology of the cell learner</h1>
+  <div class="foot">
+    <p>Robert Hooke saw tiny boxes in cork, like a honeycomb, and called them cells, from the Latin for a small room. Inside a living one is a city that never stops moving. Keep this one running.</p>
+    <button id="begin" class="gilt"></button>
+  </div>
+</section>
+
+<section id="chapters" hidden>
+  <header class="bar"><button class="icon" data-title aria-label="Back to title">‹</button><h2>The seven chapters</h2></header>
+  <ol id="petals"></ol>
+</section>
+
+<section id="hud" hidden>
+  <header class="topline">
+    <button class="icon" data-chapters aria-label="All chapters">‹</button>
+    <div><p id="cnum"></p><h2 id="ctitle"></h2></div>
+    <button class="icon" id="sound" aria-label="Turn sound off"></button>
+  </header>
+  <div id="panel">
+    <p id="say"></p>
+    <dl id="meters">
+      <div><dt id="count-label">Delivered</dt><dd id="count"></dd></div>
+      <div id="budget-box"><dt>Tubulin</dt><dd id="budget"></dd></div>
+      <div id="atp-box"><dt>ATP</dt><dd><i id="atp"></i></dd></div>
+      <div id="stress-box"><dt>Stress</dt><dd><i id="stress"></i></dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="brief" class="sheet" hidden>
+  <p id="bnum"></p>
+  <h2 id="btitle"></h2>
+  <p id="blede"></p>
+  <p id="bgoal"></p>
+  <button id="bgo" class="gilt">Begin</button>
+</section>
+
+<section id="done" class="sheet" hidden>
+  <div id="roses"></div>
+  <h2 id="dtitle"></h2>
+  <p id="dscore"></p>
+  <p id="dterm"></p>
+  <p id="dnote"></p>
+  <div class="actions">
+    <button id="dnext" class="gilt"></button>
+    <button id="dagain" class="plain">Play it again</button>
+  </div>
+</section>
+
+<script>/*__JS__*/</script>
+</body>
+</html>

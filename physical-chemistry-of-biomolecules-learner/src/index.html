@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#16335a">
+<meta name="description" content="Twelve views of the free-energy landscape. Move the sun, watch the molecules, and learn the physical chemistry of biomolecules.">
+<title>Physical chemistry of biomolecules learner</title>
+<link rel="icon" href="data:,">
+<style>/*__FONTS__*//*__CSS__*/</style>
+</head>
+<body>
+<canvas id="gl" aria-label="A woodblock print of a free-energy landscape"></canvas>
+
+<div id="sunpad" role="slider" tabindex="0" hidden><span id="sunlabel"></span></div>
+<div id="handles"></div>
+
+<section id="title" class="page" hidden>
+  <div class="cartouche" lang="ja" aria-hidden="true">自由エネルギー十二景</div>
+  <h1>Physical chemistry of biomolecules learner</h1>
+  <div class="foot">
+  <p class="lede">Twelve views of the free-energy landscape. Move the sun, reshape the land, and listen to molecules cross the passes.</p>
+  <div class="actions">
+    <button id="begin" class="stamp"></button>
+    <button id="to-album" class="plain">All twelve views</button>
+  </div>
+  </div>
+</section>
+
+<section id="album" class="page" hidden>
+  <header class="bar"><button class="icon" data-home aria-label="Back to title">‹</button><h2>Twelve views</h2></header>
+  <ol id="prints"></ol>
+</section>
+
+<section id="play" hidden>
+  <header class="topline">
+    <button class="icon" data-album aria-label="All views">‹</button>
+    <div><p id="vnum"></p><h2 id="vtitle"></h2></div>
+    <button class="icon" id="sound" aria-label="Turn sound off"></button>
+  </header>
+  <div id="panel">
+    <p id="say"></p>
+    <div id="pop"><div id="fill"></div><div id="band"></div><div id="mark" hidden></div></div>
+    <canvas id="strip" hidden></canvas>
+    <p id="read"></p>
+    <div id="ctrl"></div>
+  </div>
+</section>
+
+<section id="brief" class="sheet" hidden>
+  <p id="bnum"></p>
+  <h2 id="btitle"></h2>
+  <p id="blede"></p>
+  <p id="bgoal"></p>
+  <button id="bgo" class="stamp">Begin</button>
+</section>
+
+<section id="done" class="sheet" hidden>
+  <div id="seals"></div>
+  <h2 id="dtitle"></h2>
+  <p id="dscore"></p>
+  <p id="dformula"></p>
+  <p id="dtext"></p>
+  <div class="actions">
+    <button id="dnext" class="stamp"></button>
+    <button id="dagain" class="plain">Print it again</button>
+  </div>
+</section>
+
+<script>/*__JS__*/</script>
+</body>
+</html>
