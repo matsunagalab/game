@@ -1,4 +1,8 @@
-// All sound is synthesised. A plucked string for each barrier crossing, so rates can be heard.
+// All sound is synthesised. A plucked string for each hydrogen bond that forms, so rates can be heard.
+import { BEAT, piece } from './music.js';
+import { Player } from './player.js';
+
+const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 const SCALE = [0, 1, 5, 7, 8, 12, 13, 17, 19, 20, 24]; // In scale, from D.
 const BASE = 146.83;
 const TUNE = [5, 7, 8, 7, 5, 4, 3, 5, 7, 9, 8, 7, 5, 8, 7, 5, 4, 3, 2, 3];
@@ -35,7 +39,80 @@ export class Sound {
     verb.buffer = this.room(2.2);
     this.wet.connect(verb).connect(this.master);
     this.string = this.pluckBuffer();
-    this.startDrone();
+    this.air = this.noise();
+    this.music = ctx.createGain();
+    this.tone = ctx.createBiquadFilter();
+    this.tone.type = 'lowpass';
+    this.tone.frequency.value = 2600;
+    this.music.connect(this.tone).connect(this.master);
+    this.tone.connect(this.wet);
+    this.player = new Player(ctx, BEAT, piece, (n, t) => this.perform(n, t));
+    this.player.muted = this.muted;
+  }
+
+  noise() {
+    const { ctx } = this;
+    const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  }
+
+  // One note of the piece.
+  perform(n, t) {
+    if (n.voice === 'flute') this.flute(n, t);
+    else this.koto(n, t, { koto: 0.2, low: 0.13, sweep: 0.07 }[n.voice]);
+  }
+
+  // The string buffer again, this time placed exactly, and pressed up into the note when the score says so.
+  koto(n, t, gain) {
+    const { ctx } = this;
+    const s = ctx.createBufferSource();
+    s.buffer = this.string;
+    const rate = hz(n.midi) / BASE;
+    s.playbackRate.setValueAtTime(n.push ? rate * 2 ** (-1 / 12) : rate, t);
+    if (n.push) s.playbackRate.linearRampToValueAtTime(rate, t + 0.16);
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    s.connect(g).connect(this.music);
+    s.start(t);
+    s.stop(t + 1.8);
+  }
+
+  // Shakuhachi: it slides up into the note, gains vibrato as it goes, and carries its breath with it.
+  flute(n, t) {
+    const { ctx } = this;
+    const f = hz(n.midi);
+    const length = n.beats * BEAT * 0.94;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f * 2 ** (-0.7 / 12), t);
+    o.frequency.exponentialRampToValueAtTime(f, t + 0.14);
+    const wobble = ctx.createOscillator();
+    wobble.frequency.value = 4.6;
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(0, t);
+    depth.gain.linearRampToValueAtTime(f * 0.006, t + length * 0.8);
+    wobble.connect(depth).connect(o.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.075, t + 0.1);
+    g.gain.linearRampToValueAtTime(0.05, t + length * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0003, t + length + 0.12);
+    o.connect(g).connect(this.music);
+    const breath = ctx.createBufferSource();
+    breath.buffer = this.air;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = f * 2;
+    band.Q.value = 3;
+    const b = ctx.createGain();
+    b.gain.setValueAtTime(0.03, t);
+    b.gain.exponentialRampToValueAtTime(0.0003, t + Math.min(0.5, length));
+    breath.connect(band).connect(b).connect(this.music);
+    const stop = t + length + 0.14;
+    o.start(t); wobble.start(t); breath.start(t, Math.random());
+    o.stop(stop); wobble.stop(stop); breath.stop(stop);
   }
 
   room(seconds) {
@@ -70,36 +147,10 @@ export class Sound {
     return buf;
   }
 
-  // A low breath under everything, brighter when the sun is hot.
-  startDrone() {
-    const { ctx } = this;
-    const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const n = noise.getChannelData(0);
-    for (let i = 0; i < n.length; i++) n[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = noise;
-    src.loop = true;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 440;
-    bp.Q.value = 9;
-    this.breathGain = ctx.createGain();
-    this.breathGain.gain.value = 0.02;
-    this.breathFilter = bp;
-    src.connect(bp).connect(this.breathGain).connect(this.wet);
-    src.start();
-    const o = ctx.createOscillator();
-    o.frequency.value = BASE / 2;
-    const g = ctx.createGain();
-    g.gain.value = 0.035;
-    o.connect(g).connect(this.master);
-    o.start();
-  }
-
+  // A hotter sun opens the tone of the piece.
   setHeat(h) {
     if (!this.ctx) return;
-    this.breathFilter.frequency.setTargetAtTime(300 + 900 * h, this.ctx.currentTime, 0.2);
-    this.breathGain.gain.setTargetAtTime(0.012 + 0.04 * h, this.ctx.currentTime, 0.2);
+    this.tone.frequency.setTargetAtTime(2000 + 3500 * h, this.ctx.currentTime, 0.2);
   }
 
   pluck(degree, gain = 0.3, when = 0, pan = 0) {
@@ -120,22 +171,22 @@ export class Sound {
     s.start(ctx.currentTime + when);
   }
 
-  // Forward and backward crossings get different strings, so balance is audible.
-  cross(to, forward) {
+  // One event in the simulation. Rate-limited, so a storm of bonds becomes a roll, not a roar.
+  event(degree, gain = 0.16, pan = 0, gapS = 0.05) {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    if (now - this.lastCross < 0.055) return;
+    if (now - this.lastCross < gapS) return;
     this.lastCross = now;
-    this.pluck((forward ? 6 : 3) + to, forward ? 0.2 : 0.14, 0, forward ? 0.35 : -0.35);
+    this.pluck(degree, gain, 0, pan);
   }
 
-  // Net flow plays the next note of the tune, so a driven cycle is a melody.
+  // Walks up the tune one note per call: used when something good keeps happening.
   tune() {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     if (now - this.lastCross < 0.17) return;
     this.lastCross = now;
-    this.pluck(TUNE[this.tuneStep % TUNE.length], 0.34);
+    this.pluck(TUNE[this.tuneStep % TUNE.length], 0.3);
     this.tuneStep += 1;
   }
 
@@ -158,6 +209,7 @@ export class Sound {
 
   setMuted(m) {
     this.muted = m;
+    if (this.player) this.player.muted = m;
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.03);
   }
 }
