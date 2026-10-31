@@ -89,7 +89,8 @@ export class ArgonDrop {
       f[ii] += g * dx; f[ii + 1] += g * dy; f[ii + 2] += g * dz;
       f[jj] -= g * dx; f[jj + 1] -= g * dy; f[jj + 2] -= g * dz;
       pot += e;
-      ei[i] += 0.5 * e; ei[j] += 0.5 * e;
+      // Measured energy is the plain truncated pair energy, so that the usual tail correction applies to it.
+      ei[i] += 0.5 * (e + shift); ei[j] += 0.5 * (e + shift);
       if (r2 < shell2) { coord[i]++; coord[j]++; }
     }
     this.pot = pot;

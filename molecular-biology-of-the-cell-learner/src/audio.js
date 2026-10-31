@@ -92,3 +92,23 @@ export class Sound {
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.03);
   }
 }
+
+// Small mechanical sounds for the molecular stage.
+Sound.prototype.tick = function tick(semi = 0, gain = 0.1) {
+  if (!this.ctx || this.ctx.state !== 'running') return;
+  const { ctx } = this;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(320 * 2 ** (semi / 12), t);
+  o.frequency.exponentialRampToValueAtTime(120 * 2 ** (semi / 12), t + 0.05);
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0005, t + 0.07);
+  o.connect(g);
+  g.connect(this.master);
+  o.start(t);
+  o.stop(t + 0.09);
+};
+Sound.prototype.bad = function bad() { this.tick(-14, 0.22); this.bell(1, 0.05); this.bell(2, 0.05, 0.04); };
+Sound.prototype.whoosh = function whoosh(up = true) { [0, 3, 7, 12].forEach((s, i) => this.bell((up ? s : 12 - s) - 5, 0.06, i * 0.06)); };

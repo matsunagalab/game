@@ -1,10 +1,11 @@
-// Chapter four: one chain, many copies. Turning one piece turns them all, and a good contact repeats everywhere.
+// The assembly renderer. Every copy is one symmetry operator, drawn from one set of atoms, so that a virus of sixty
+// stays cheap. The stages in ppi.js decide which contacts form, and this file closes the shell.
 import * as THREE from '../../vendor/three/three.module.js';
 import { PAPER, SHADE_GLSL } from '../press.js';
 import { Atoms } from '../ribbon.js';
 import { protein } from '../proteins.js';
 import { buzz } from '../sound.js';
-import { $, clamp, ease } from '../ui.js';
+import { clamp, ease } from '../ui.js';
 
 const VS = /* glsl */ `
 precision highp float;
@@ -14,7 +15,7 @@ uniform sampler2D uAtoms, uInks, uCopies;
 uniform int uCount;
 uniform vec4 uQuat;
 uniform vec3 uCom;
-uniform float uGap, uRadius, uHeld;
+uniform float uGap, uRadius, uHeld, uFull;
 out vec3 vCenter;
 out vec3 vRay;
 out float vR;
@@ -41,7 +42,7 @@ void main() {
   vec4 ink = texelFetch(uInks, ivec2(atom, 0), 0);
   // The piece in hand is pink; its copies print lighter until the shell closes.
   bool held = abs(float(copy) - uHeld) < 0.5;
-  vec3 body = held ? mix(vec3(1.0, 0.0, 0.0), ink.rgb, ink.a) : ink.rgb * 0.5;
+  vec3 body = uFull > 0.5 ? ink.rgb : held ? mix(vec3(1.0, 0.0, 0.0), ink.rgb, ink.a) : ink.rgb * 0.5;
   vInk = mix(body, finalInk, st.w);
   vId = 1.0 + float(copy % 200);
   gl_Position = projectionMatrix * vec4(p, 1.0);
@@ -77,8 +78,12 @@ const floatTexture = (data, w, h) => {
   return t;
 };
 
-class Shell {
-  constructor(ctx, stage) {
+export class Assembly {
+  // free: the copies are placed by the caller, with no starting twist.
+  constructor(ctx, stage, onDone, { free = false, spread = 1 } = {}) {
+    this.onDone = onDone;
+    this.free = free;
+    this.spread = spread;
     Object.assign(this, { ctx, stage });
     const { press, rig, hud } = ctx;
     this.press = press;
@@ -119,6 +124,7 @@ class Shell {
         beads.push({ x: p.atomXYZ[i * 3] - com.x, y: p.atomXYZ[i * 3 + 1] - com.y, z: p.atomXYZ[i * 3 + 2] - com.z, s: 1, r: p.atomRes[i] });
       }
     }
+    this.beads = beads;
     const N = (this.count = beads.length);
     const atomData = new Float32Array(N * 4);
     const inkData = new Float32Array(N * 4);
@@ -153,6 +159,7 @@ class Shell {
       uCom: { value: com.clone() },
       uGap: { value: 0 },
       uHeld: { value: this.identity },
+      uFull: { value: free ? 1 : 0 },
       uRadius: { value: coarse ? 2.05 : 1.7 },
       uShade: { value: 0.42 },
     };
@@ -163,19 +170,49 @@ class Shell {
 
     // Start the piece turned away by a set angle, about an axis that keeps the patches in view.
     const axis = new THREE.Vector3(0.62, 0.71, 0.33).normalize();
-    this.quat.setFromAxisAngle(axis, (stage.start * Math.PI) / 180);
+    if (!free) this.quat.setFromAxisAngle(axis, (stage.start * Math.PI) / 180);
     this.setCameraFor();
-    this.state = 'turn';
+    this.state = free ? 'free' : 'turn';
     this.clock = 0;
     this.fit = 0;
     this.shownFit = 0;
-    this.buildHud();
-    this.bindDrag();
     ctx.onLayout = () => this.layout();
     this.layout();
     rig.enabled = false;
     this.refit();
-    hud.setGoal('Drag to turn the pink piece. Drag near the screen edge to twist it. Bring orange to blue.');
+    this.fit = free ? 1 : 0.15;
+    if (free) {
+      this.rig.enabled = true;
+      for (let k = 0; k < this.nCopies; k++) this.copyData[k * 20 + 12] = 0;
+      this.copyTex.needsUpdate = true;
+    }
+    void hud;
+  }
+
+  // Ink for every bead, from a residue: [pink, yellow, blue, alpha].
+  setInks(of) {
+    const d = this.inkTex.image.data;
+    this.beads.forEach((b, i) => d.set(of(b.r), i * 4));
+    this.inkTex.needsUpdate = true;
+  }
+
+  // Replaces where a copy sits: a flat 3x4 matrix.
+  setMatrix(k, m) {
+    this.copyData.set(m, k * 20);
+    this.copyTex.needsUpdate = true;
+  }
+
+  shift(k, base, x, y, z) {
+    const d = this.copyData;
+    d[k * 20 + 3] = base[3] + x;
+    d[k * 20 + 7] = base[7] + y;
+    d[k * 20 + 11] = base[11] + z;
+    this.copyTex.needsUpdate = true;
+  }
+
+  setVisible(k, on) {
+    this.copyData[k * 20 + 13] = on ? 1 : 0;
+    this.copyTex.needsUpdate = true;
   }
 
   // When the shell closes, each ring of the symmetry takes its own ink, so that the geometry shows at a glance.
@@ -330,83 +367,17 @@ class Shell {
     rig.spin = 0;
   }
 
-  buildHud() {
-    const el = (this.meter = $('div', 'fit'));
-    this.meterFill = $('i');
-    this.meterText = $('span', '', 'Fit');
-    el.append(this.meterFill, this.meterText);
-    this.ctx.layer.append(el);
-  }
-
   layout() {
     const { press, rig, p, com } = this;
     const { cssW: w, cssH: h } = press;
     const landscape = w > h * 1.15;
     let radius = 0;
     for (const v of this.ca) radius = Math.max(radius, v.length());
-    const shell = com.length() + radius + 6;
+    const shell = (com.length() + radius + 6) * this.spread;
     const room = landscape ? h - 70 : Math.min(w, h - 230);
     press.setFocus(0.5, landscape ? 0.56 : (116 + (h - 230) / 2) / h);
     rig.dist = rig.distTarget = ((shell * 1.28) / Math.tan((press.camera.fov * Math.PI) / 360)) * (h / room);
     void p;
-  }
-
-  // A trackball: dragging near the middle tips the piece, dragging around the edge of the screen twists it.
-  ball(x, y, out) {
-    const { press } = this;
-    const R = Math.min(press.cssW, press.cssH) * 0.34;
-    const px = (x - press.focus.x * press.cssW) / R;
-    const py = (press.focus.y * press.cssH - y) / R;
-    const d = px * px + py * py;
-    return out.set(px, py, d <= 0.5 ? Math.sqrt(1 - d) : 0.5 / Math.sqrt(d)).normalize();
-  }
-
-  turnBy(x0, y0, x1, y1) {
-    const a = this.ball(x0, y0, this.v0 ?? (this.v0 = new THREE.Vector3()));
-    const b = this.ball(x1, y1, this.v1 ?? (this.v1 = new THREE.Vector3()));
-    const axis = a.clone().cross(b);
-    const len = axis.length();
-    if (len < 1e-5) return;
-    const angle = Math.atan2(len, a.dot(b)) * 1.6;
-    axis.divideScalar(len).applyQuaternion(this.press.camera.quaternion);
-    this.quat.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle)).normalize();
-    this.refit();
-    this.tickFit();
-  }
-
-  bindDrag() {
-    const el = this.ctx.press.canvas;
-    this.down = (e) => {
-      if (this.state !== 'turn') return;
-      this.dragging = true;
-      this.lx = e.clientX;
-      this.ly = e.clientY;
-      el.setPointerCapture?.(e.pointerId);
-    };
-    this.move = (e) => {
-      if (!this.dragging) return;
-      this.turnBy(this.lx, this.ly, e.clientX, e.clientY);
-      this.lx = e.clientX;
-      this.ly = e.clientY;
-    };
-    this.up = () => {
-      this.dragging = false;
-      this.checkSnap();
-    };
-    el.addEventListener('pointerdown', this.down);
-    el.addEventListener('pointermove', this.move);
-    el.addEventListener('pointerup', this.up);
-    el.addEventListener('pointercancel', this.up);
-    this.onKey = (e) => {
-      const d = { ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] }[e.key];
-      if (!d || this.state !== 'turn') return;
-      e.preventDefault();
-      const cx = this.press.focus.x * this.press.cssW;
-      const cy = this.press.focus.y * this.press.cssH;
-      this.turnBy(cx, cy, cx + d[0], cy + d[1]);
-      this.checkSnap();
-    };
-    document.addEventListener('keydown', this.onKey);
   }
 
   angle() {
@@ -436,18 +407,6 @@ class Shell {
     this.fit = clamp((0.55 * contact + 0.45 * align - 0.2) / 0.8, 0, 1);
   }
 
-  tickFit() {
-    const step = Math.floor(this.fit * 24);
-    if (step !== this.fitStep) {
-      if (step > (this.fitStep ?? 0)) this.sound.pluck(this.sound.note(step), 0.05, this.sound.t, 0.3);
-      this.fitStep = step;
-    }
-  }
-
-  checkSnap() {
-    if (this.state === 'turn' && this.angle() <= this.stage.tolerance) this.snap();
-  }
-
   snap() {
     this.state = 'snap';
     this.t = 0;
@@ -468,23 +427,16 @@ class Shell {
   }
 
   win() {
-    const { ctx, stage } = this;
+    const { stage } = this;
     this.state = 'won';
-    const secs = this.endTime;
-    ctx.earn(0);
-    const limits = stage.goals.slice(1).map((g) => +g.match(/\d+/)[0]);
-    if (secs <= limits[0]) ctx.earn(1);
-    if (secs <= limits[1]) ctx.earn(2);
     this.sound.bloom();
     this.rig.enabled = true;
     this.rig.spin = 0.2;
-    this.meter.classList.add('gone');
     this.floodT = 0;
     this.rig.distTarget = this.rig.dist * 0.82;
     document.body.classList.add('night');
     this.showLigand();
-    const last = stage.id === 'virus';
-    ctx.finishSoon(last ? 'From two hinges to a virus.' : `Closed in ${Math.max(1, Math.round(secs))} ${Math.round(secs) <= 1 ? 'second' : 'seconds'}. One contact, repeated ${this.nCopies} times.`, last ? 3400 : 2300);
+    this.onDone?.(stage.closing, stage.id === 'virus' ? 3400 : 2300);
   }
 
   update(dt) {
@@ -496,7 +448,6 @@ class Shell {
     if (this.state === 'turn') {
       for (let k = 0; k < this.nCopies; k++) data[k * 20 + 12] = openGap;
       this.copyTex.needsUpdate = true;
-      if (!this.dragging && this.angle() <= this.stage.tolerance) this.snap();
     } else if (this.state === 'snap') {
       this.t += dt;
       const e = ease(clamp(this.t / 0.42, 0, 1));
@@ -525,21 +476,12 @@ class Shell {
       this.ligandT = Math.min(1, this.ligandT + dt / 0.5);
       this.ligand.mesh.scale.setScalar(ease(this.ligandT));
     }
-    this.shownFit += (this.fit - this.shownFit) * Math.min(1, dt * 10);
-    this.meterFill.style.transform = `scaleX(${Math.min(1, this.shownFit)})`;
-    this.meterText.textContent = `Fit ${Math.round(Math.min(1, this.shownFit) * 100)}%`;
     const q = this.quat;
     u.uQuat.value.set(q.x, q.y, q.z, q.w);
   }
 
   dispose() {
     const { press } = this;
-    const el = press.canvas;
-    el.removeEventListener('pointerdown', this.down);
-    el.removeEventListener('pointermove', this.move);
-    el.removeEventListener('pointerup', this.up);
-    el.removeEventListener('pointercancel', this.up);
-    document.removeEventListener('keydown', this.onKey);
     press.scene.remove(this.mesh);
     if (this.ligand) {
       press.scene.remove(this.ligand.mesh);
@@ -550,11 +492,9 @@ class Shell {
     this.atomTex.dispose();
     this.inkTex.dispose();
     this.copyTex.dispose();
-    this.meter.remove();
     this.rig.spin = 0;
     this.rig.enabled = true;
     press.setFocus(0.5, 0.5, true);
   }
 }
 
-export const startShell = (ctx, stage) => new Shell(ctx, stage);

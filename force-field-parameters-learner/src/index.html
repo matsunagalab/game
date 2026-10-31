@@ -20,9 +20,11 @@
     <button id="file" aria-label="Open your force field file">ff26.frcmod</button>
     <button class="icon" id="mute" aria-label="Sound on or off"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path id="wave" d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11"/></svg></button>
   </header>
+  <canvas id="panel"></canvas>
   <aside id="note" aria-live="polite"></aside>
   <div id="tags"></div>
   <section id="dock">
+    <div id="goals"></div>
     <div id="custom"></div>
     <div id="readouts"></div>
     <div id="rulers"></div>
@@ -33,12 +35,13 @@
 <main id="front">
   <div>
     <h1>Force-Field Parameters of Biomolecular Simulation Learner</h1>
-    <p>Every simulation of a protein rests on one equation. Tune each term by hand, then see whether your numbers fold a helix.</p>
+    <p>For proteins, bonds and angles are in good shape. Develop the four terms that are harder, then find out whether your force field can hold a protein&rsquo;s metastable states.</p>
   </div>
   <div>
     <div id="equation"></div>
     <div id="front-row">
       <button id="begin">Start</button>
+      <button id="bench-open">Bench notes</button>
       <span id="front-hint">Or open any term of the equation. Sound on is best.</span>
     </div>
   </div>
@@ -60,6 +63,12 @@
     <button id="file-copy">Copy the file</button><button id="file-close">Close</button>
   </div>
 </div>
+
+<div id="report" role="dialog" aria-modal="true" aria-label="The referee's report">
+  <div id="report-card"><div id="report-body"></div><button id="report-close">Back to the bench</button></div>
+</div>
+
+<div id="bench" role="dialog" aria-modal="true" aria-label="Bench notes"></div>
 
 <div id="crash" role="alertdialog" aria-label="The simulation crashed">
   <div id="crash-card"><pre id="crash-log"></pre><button id="crash-go">Restart from the last checkpoint</button></div>

@@ -161,7 +161,8 @@ export class Stage {
     this.scene.add(this.dust);
   }
 
-  setInsets(ins) { Object.assign(this.insets, ins); this.resize(); }
+  // Only the camera moves. Reallocating the render targets here would stall a frame every time a note changes length.
+  setInsets(ins) { Object.assign(this.insets, ins); this.placeCamera(false); }
 
   // Fit a sphere of this radius into the free part of the screen.
   frame(radius, target = [0, 0, 0], { yaw = 0, pitch = 0 } = {}) {

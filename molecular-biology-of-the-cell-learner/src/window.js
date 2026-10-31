@@ -13,14 +13,21 @@ const PALETTE = [
   [0.2, 0.46, 0.76], // endosome: sky
   [0.2, 0.3, 0.64], // spindle: blue
   [0.92, 0.72, 0.2], // pole: gold
+  [0.06, 0.09, 0.3], // outside the cell: deep blue
+  [0.3, 0.17, 0.07], // cytosol in a close view: dark amber
+  [0.28, 0.06, 0.1], // matrix: dark wine
+  [0.04, 0.2, 0.22], // lumen: dark teal
+  [0.17, 0.07, 0.28], // nucleoplasm: dark violet
 ];
 
-const paintShader = (regions) => /* glsl */`
+const paintShader = (regions, stage) => /* glsl */`
+  ${stage ? '#define STAGE' : ''}
   varying vec2 vUv;
+  uniform vec4 uView;
   const int N = ${regions.length};
   uniform vec4 uE[${Math.max(1, regions.length)}];
   uniform vec2 uA[${Math.max(1, regions.length)}];
-  uniform vec3 uC[11];
+  uniform vec3 uC[16];
   vec2 hash(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
@@ -52,8 +59,13 @@ const paintShader = (regions) => /* glsl */`
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
   }
   void main() {
+    #ifdef STAGE
+    vec2 p = uView.xy + vUv * uView.zw;
+    float r = 0.;
+    #else
     vec2 p = (vUv - .5) * 2.6;
     float r = length(p);
+    #endif
     int reg = 0;
     float edge = 1e3;
     for (int i = 0; i < N; i++) {
@@ -66,6 +78,9 @@ const paintShader = (regions) => /* glsl */`
       else edge = min(edge, sd);
     }
     float scale = reg == 0 ? 6.5 : (reg == 1 ? 9.0 : 13.0);
+    #ifdef STAGE
+    scale = 1.5;
+    #endif
     vec3 v = voronoi(p * scale + float(reg) * 3.1);
     vec3 col = uC[reg];
     float tone = v.x;
@@ -75,8 +90,16 @@ const paintShader = (regions) => /* glsl */`
     float streak = noise(p * vec2(9., 38.) + v.xy * 30.);
     col *= .84 + .3 * streak;
     col *= .78 + .5 * smoothstep(.0, .22, v.z);
+    #ifdef STAGE
+    float lead = 1.0 - smoothstep(.016, .03, v.z);
+    float organelleLead = 1.0 - smoothstep(.016, .03, edge);
+    col = mix(col, vec3(.05,.045,.07), max(lead, organelleLead));
+    gl_FragColor = vec4(col, 1.);
+    return;
+    #else
     float lead = 1.0 - smoothstep(.016, .026, v.z);
     float organelleLead = 1.0 - smoothstep(.006, .013, edge);
+    #endif
     // Stone rings and the gold of the cell membrane.
     float rimIn = smoothstep(.925, .933, r);
     float rimOut = 1.0 - smoothstep(1.0, 1.008, r);
@@ -96,9 +119,9 @@ const paintShader = (regions) => /* glsl */`
       float joint = (1. - smoothstep(.0, .04, abs(fract(a) - .5))) * step(r, 1.17);
       joint = max(joint, 1. - smoothstep(.0, .012, abs(r - 1.17)));
       vec3 stone = mix(vec3(.11,.105,.13), vec3(.17,.16,.18), block);
-      col = stone * (1. - joint * .6) * (1. - smoothstep(1.12, 1.3, r) * .86);
+      col = mix(stone * (1. - joint * .6), vec3(13., 12., 19.) / 255., smoothstep(1.12, 1.27, r));
     }
-    gl_FragColor = vec4(col, r > 1.0 ? 0.0 : 1.0);
+    gl_FragColor = vec4(col, r > 1.0 ? 0.0 : (float(reg) + 1.) / 16.);
   }`;
 
 export class Rose {
@@ -107,19 +130,21 @@ export class Rose {
     r.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.renderer = r;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0d0c13);
+    this.scene.background = new THREE.Color().setRGB(13 / 255, 12 / 255, 19 / 255, THREE.LinearSRGBColorSpace);
     this.camera = new THREE.PerspectiveCamera(28, 1, 0.1, 30);
     this.u = {
-      uMap: { value: null }, uTime: { value: 0 }, uStress: { value: 0 }, uFlash: { value: 0 }, uFocus: { value: new THREE.Vector3(0, 0, 0) },
+      uMap: { value: null }, uTime: { value: 0 }, uStress: { value: 0 }, uFlash: { value: 0 }, uFocus: { value: new THREE.Vector3(0, 0, 0) }, uLit: { value: new Array(16).fill(1) }, uRim: { value: 1 },
     };
     this.halves = [1, -1].map((side) => {
       const mat = new THREE.ShaderMaterial({
+        depthTest: false, depthWrite: false,
         uniforms: { ...this.u, uSide: { value: side }, uSplit: { value: 0 } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: /* glsl */`
           varying vec2 vUv;
           uniform sampler2D uMap;
-          uniform float uTime, uStress, uFlash, uSide, uSplit;
+          uniform float uTime, uStress, uFlash, uSide, uSplit, uRim;
+          uniform float uLit[16];
           uniform vec3 uFocus;
           void main() {
             vec2 p = (vUv - .5) * 2.6;
@@ -136,7 +161,14 @@ export class Rose {
             }
             vec4 t = texture2D(uMap, vUv);
             vec3 c = t.rgb;
-            if (t.a > .5) {
+            if (t.a > .02) {
+              // Panes wake one by one: a dark pane is a part of the cell not yet understood.
+              int reg = int(clamp(floor(t.a * 16. + .5) - 1., 0., 15.));
+              float lit = uLit[reg];
+              float gray = dot(c, vec3(.3, .5, .2));
+              c = mix(vec3(gray) * .42, c, lit);
+              float rr = length(p);
+              if (rr > .925) c *= uRim;
               // Sun moves across the glass, and a slow shimmer keeps it alive.
               float beam = pow(max(0., sin(p.x * 1.1 + p.y * .7 - uTime * .1)), 3.0);
               float shim = .96 + .05 * sin(p.x * 13. + p.y * 9. + uTime * .6);
@@ -185,14 +217,67 @@ export class Rose {
     this.scene.add(this.beads);
     this.split = 0;
     this.pointer = { x: 0, y: 0 };
+    this.view = { x: 0, y: 0, k: 1 };
+    this.want = { x: 0, y: 0, k: 1 };
+    this.stageScene = new THREE.Scene();
+    this.stageMat = new THREE.ShaderMaterial({
+      transparent: true, depthTest: false, depthWrite: false,
+      uniforms: { uMap: { value: null }, uTime: this.u.uTime, uFlash: this.u.uFlash, uStress: this.u.uStress, uAmt: { value: 0 }, uDim: { value: 0.72 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+      fragmentShader: /* glsl */`
+        varying vec2 vUv;
+        uniform sampler2D uMap;
+        uniform float uTime, uFlash, uStress, uAmt, uDim;
+        void main() {
+          vec3 c = texture2D(uMap, vUv).rgb * uDim;
+          float beam = pow(max(0., sin(vUv.x * 2.6 + vUv.y * 1.8 - uTime * .12)), 3.0);
+          c *= (1. + .55 * beam) * (.97 + .04 * sin(vUv.x * 19. + vUv.y * 13. + uTime * .5));
+          c = mix(c, c * vec3(1.5, .5, .42), uStress);
+          c += c * uFlash * .9;
+          float vig = smoothstep(1.25, .35, length(vUv - .5) * 1.9);
+          gl_FragColor = vec4(c * (.55 + .45 * vig), uAmt);
+        }`,
+    });
+    const stageQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.stageMat);
+    stageQuad.frustumCulled = false;
+    this.stageScene.add(stageQuad);
+    this.stageCam = new THREE.Camera();
     this.resize();
+  }
+
+  // The close view: the same painter fills the whole screen, here in units of 100 virtual pixels.
+  paintStage(regions, view) {
+    const r = this.renderer;
+    const sz = r.getDrawingBufferSize(new THREE.Vector2());
+    this.stageRt?.dispose();
+    this.stageRt = new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.UnsignedByteType });
+    const list = regions.length ? regions : [[99, 99, 0.01, 0.01, 0, 0]];
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uE: { value: list.map((e) => new THREE.Vector4(e[0], e[1], Math.max(e[2], 1e-3), Math.max(e[3], 1e-3))) },
+        uA: { value: list.map((e) => new THREE.Vector2(e[4], e[5])) },
+        uC: { value: PALETTE.map((c) => new THREE.Vector3(...c)) },
+        uView: { value: new THREE.Vector4(...view) },
+      },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+      fragmentShader: paintShader(new Array(list.length), true),
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+    const s = new THREE.Scene();
+    s.add(quad);
+    r.setRenderTarget(this.stageRt);
+    r.render(s, new THREE.Camera());
+    r.setRenderTarget(null);
+    mat.dispose();
+    quad.geometry.dispose();
+    this.stageMat.uniforms.uMap.value = this.stageRt.texture;
   }
 
   // Paint a layout of glass once. A smaller texture on small screens keeps the shader cost at one frame.
   paint(regions) {
     const size = Math.min(2048, Math.round(Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio || 1, 2) * 1.05));
     this.rt?.dispose();
-    this.rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.UnsignedByteType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, samples: 4 });
+    this.rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.UnsignedByteType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
     const n = Math.max(1, regions.length);
     const list = regions.length ? regions : [[9, 9, 0.01, 0.01, 0, 0]];
     const mat = new THREE.ShaderMaterial({
@@ -200,9 +285,10 @@ export class Rose {
         uE: { value: list.map((e) => new THREE.Vector4(e[0], e[1], Math.max(e[2], 1e-3), Math.max(e[3], 1e-3))) },
         uA: { value: list.map((e) => new THREE.Vector2(e[4], e[5])) },
         uC: { value: PALETTE.map((c) => new THREE.Vector3(...c)) },
+        uView: { value: new THREE.Vector4() },
       },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
-      fragmentShader: paintShader(new Array(n)),
+      fragmentShader: paintShader(new Array(n), false),
     });
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
     const s = new THREE.Scene();
@@ -281,22 +367,36 @@ export class Rose {
     this.beadGeo.setDrawRange(0, n);
   }
 
-  frame(t) {
+  frame(t, dt = 0.016) {
+    this.lastDt = dt;
     this.u.uTime.value = t;
     this.u.uFlash.value *= 0.92;
     const [a, b] = this.halves;
+    // A swollen cell is a visibly larger window.
+    this.swellNow = (this.swellNow ?? 1) + ((this.swell ?? 1) - (this.swellNow ?? 1)) * 0.05;
+    a.scale.setScalar(this.swellNow);
+    b.scale.setScalar(this.swellNow);
     const gap = this.split * 0.1;
     a.position.y = gap;
     b.position.y = -gap;
     a.material.uniforms.uSplit.value = this.split;
     b.material.uniforms.uSplit.value = this.split;
-    const y = this.offset;
+    const v = this.view;
+    const ease = 1 - Math.exp(-this.lastDt * 3.2);
+    v.x += (this.want.x - v.x) * ease;
+    v.y += (this.want.y - v.y) * ease;
+    v.k = Math.exp(Math.log(v.k) + (Math.log(this.want.k) - Math.log(v.k)) * ease);
+    const y = this.offset * Math.min(1, v.k) + v.y;
     const swayX = Math.sin(t * 0.17) * 0.05 + this.pointer.x * 0.09;
     const swayY = Math.sin(t * 0.13) * 0.03 + this.pointer.y * 0.06;
-    const d = this.distance * (1 + this.split * 0.08);
-    this.camera.position.set(swayX * d * 0.5, y + swayY * d * 0.5 - 0.0, d);
-    this.camera.lookAt(0, y, 0);
-    this.renderer.render(this.scene, this.camera);
+    const d = this.distance * (1 + this.split * 0.08) * v.k;
+    this.camera.position.set(v.x + swayX * d * 0.5, y + swayY * d * 0.5 - 0.0, d);
+    this.camera.lookAt(v.x, y, 0);
+    this.renderer.autoClear = true;
+    const amt = this.stageMat.uniforms.uAmt.value;
+    if (amt < 0.999) this.renderer.render(this.scene, this.camera);
+    else this.renderer.clear();
+    if (amt > 0.001) { this.renderer.autoClear = false; this.renderer.render(this.stageScene, this.stageCam); }
   }
 
   // Unit-disk position to CSS pixels, and back.

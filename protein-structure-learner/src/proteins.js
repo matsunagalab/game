@@ -1,5 +1,6 @@
 // Decodes the compact coordinate data, and holds the colour language of the game.
 import raw from './data/proteins.json';
+import { dssp } from './science/dssp.js';
 
 const bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const coords = (s) => {
@@ -33,10 +34,31 @@ export function protein(key) {
     atomSide: p.atoms.side,
     hetXYZ: p.het ? coords(p.het.xyz) : null,
     hetEl: p.het?.el ?? '',
+    freeArea: p.free ? bytes(p.free) : null,
   };
   cache.set(key, out);
   return out;
 }
+
+// The backbone of a protein as the science code wants it, with its DSSP assignment worked out once.
+const folds = new Map();
+export function foldOf(key) {
+  if (folds.has(key)) return folds.get(key);
+  const p = protein(key);
+  const bb = { n: p.n, seq: p.seq, chain: p.chain, nXYZ: p.nXYZ, caXYZ: p.caXYZ, cXYZ: p.cXYZ, oXYZ: p.oXYZ };
+  const out = { p, bb, d: dssp(bb) };
+  folds.set(key, out);
+  return out;
+}
+
+// Residue index from a PDB residue number, within one chain.
+export const indexOf = (p, resno, chain = 0) => {
+  for (let i = 0; i < p.n; i++) if (p.resno[i] === resno && p.chain[i] === chain) return i;
+  throw new Error(`No residue ${resno} in ${p.key}`);
+};
+
+// Area each atom loses, decoded from the base64 byte lists.
+export const atomBytes = (s) => bytes(s);
 
 // Ink recipes as [pink, yellow, blue].
 export const TONE = {

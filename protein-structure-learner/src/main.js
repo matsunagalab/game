@@ -8,9 +8,10 @@ import { $, button, Overlay } from './ui.js';
 import { CHAPTERS, allStages, nextStage } from './stages.js';
 import rama from './data/rama.json';
 import { startChain } from './chapters/chain.js';
+import { startBond } from './chapters/bond.js';
 import { startBeat } from './chapters/beat.js';
 import { startCore } from './chapters/core.js';
-import { startShell } from './chapters/shell.js';
+import { startShell } from './chapters/ppi.js';
 
 const canvas = document.getElementById('c');
 const root = document.getElementById('ui');
@@ -202,6 +203,7 @@ function mapGlyph() {
 }
 
 const glyphs = {
+  bond: '<svg class="glyph" viewBox="0 0 74 74" fill="none"><path d="M2 12h70M2 62h70" stroke="#1f2aa6" stroke-width="5"/><g stroke="#ff4a9e" stroke-width="4.5" stroke-linecap="round"><path d="M9 14l20 46M23 14l20 46M37 14l20 46M51 14l20 46"/></g></svg>',
   beat: '<svg class="glyph" viewBox="0 0 74 74" fill="#ffd21f"><circle cx="9" cy="37" r="7"/><circle cx="29" cy="37" r="7"/><circle cx="45" cy="37" r="7"/><circle cx="65" cy="37" r="7"/><path d="M0 52h74v3H0z"/><path d="M0 19h74v3H0z"/></svg>',
   core: '<svg class="glyph" viewBox="0 0 74 74"><circle cx="37" cy="37" r="35" fill="#1f2aa6"/><g fill="#ffd21f"><circle cx="37" cy="13" r="7"/><circle cx="55" cy="19" r="7"/><circle cx="19" cy="19" r="7"/></g><g fill="#ff4a9e"><circle cx="63" cy="42" r="6"/><circle cx="11" cy="42" r="6"/><circle cx="47" cy="61" r="6"/><circle cx="27" cy="61" r="6"/></g></svg>',
   shell: '<svg class="glyph" viewBox="0 0 74 74" fill="none" stroke="#1f2aa6" stroke-width="3.2" stroke-linejoin="round"><path d="M37 3 66 20v34L37 71 8 54V20z" fill="#ff4a9e"/><path d="M37 3 20 30l17 18 17-18zM8 20l12 10-12 24M66 20 54 30l12 24M20 30h34M37 48v23M8 54l29-6 29 6"/></svg>',
@@ -341,7 +343,7 @@ function startStage(id) {
     ended = true;
     clearTimeout(finishTimer);
   };
-  const start = { chain: startChain, beat: startBeat, core: startCore, shell: startShell }[stage.chapter];
+  const start = { chain: startChain, bond: startBond, beat: startBeat, core: startCore, shell: startShell }[stage.chapter];
   current = start(ctx, stage);
 }
 

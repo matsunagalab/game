@@ -52,6 +52,7 @@ button:focus-visible, .map:focus-visible { outline: 3px solid var(--pink); outli
 .masthead { padding: calc(14px + var(--sat)) calc(18px + var(--sar)) 10px calc(18px + var(--sal)); display: flex; align-items: center; justify-content: space-between; background: var(--blue); color: var(--yellow); font-weight: 700; }
 .band { padding: 24px calc(18px + var(--sar)) 26px calc(18px + var(--sal)); }
 .band.chain { background: var(--aqua); color: var(--blue); }
+.band.bond { background: #dfe9ff; color: var(--blue); }
 .band.beat { background: var(--blue); color: var(--yellow); }
 .band.core { background: var(--pink); color: var(--blue); }
 .band.shell { background: var(--yellow); color: var(--blue); padding-bottom: calc(34px + var(--sab)); }
@@ -116,7 +117,6 @@ canvas.glyph { border-radius: 4px; }
   .dock { right: auto; width: 54%; }
 }
 @media (min-width: 900px) {
-  .fit { left: 50%; right: auto; width: 460px; margin-left: -230px; }
   .sheet { left: auto; right: 24px; bottom: 24px; width: 440px; border-radius: 10px; max-height: calc(100% - 48px); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -153,18 +153,18 @@ canvas.glyph { border-radius: 4px; }
 .readacts .btn:not(.pink) { background: var(--yellow); color: var(--blue); }
 .strip.seven { grid-template-columns: repeat(7, 1fr); }
 
-/* Core: the dial */
-.core-dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px calc(12px + var(--sar)) calc(10px + var(--sab)) calc(12px + var(--sal)); display: flex; gap: 12px; align-items: center; justify-content: center; }
-.core-dock.gone { display: none; }
-.dial-wrap { flex: none; }
-.wheel { display: block; }
-.wheel.big { pointer-events: auto; cursor: grab; touch-action: none; }
-.dial-side { display: flex; flex-direction: column; gap: 10px; align-items: stretch; flex: 1; max-width: 240px; min-width: 0; }
-.minis { display: flex; flex-wrap: wrap; gap: 6px; }
-.mini { pointer-events: auto; border-radius: 50%; }
-.squeeze { width: 100%; padding-inline: 8px; }
-.squeeze:disabled { opacity: .5; }
-.night .squeeze { background: var(--yellow); }
+/* Core */
+.grid { position: absolute; pointer-events: auto !important; display: flex; flex-direction: column; align-items: center; touch-action: manipulation; }
+.grid canvas { display: block; pointer-events: auto; cursor: pointer; }
+.gridread { margin: 0 0 4px; font-weight: 750; font-size: 14px; min-height: 20px; }
+.core-chips { pointer-events: auto !important; gap: 6px; }
+.chip.big { min-height: 50px; padding-inline: 16px; font-size: 18px; white-space: nowrap; }
+.jig { position: absolute; display: flex; flex-direction: column; gap: 6px; pointer-events: auto !important; }
+.jighost { position: relative; flex: 1; min-height: 0; }
+.jighost.full { height: 100%; }
+.tray { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.tile { pointer-events: auto; min-height: 48px; border-radius: 10px; background: var(--blue); color: var(--yellow); font-weight: 800; font-size: 19px; }
+.fit.cost { pointer-events: none; }
 
 /* Shell: the fit meter */
 .fit { position: absolute; left: 14px; right: 14px; bottom: calc(14px + var(--sab)); height: 44px; border-radius: 999px; box-shadow: inset 0 0 0 3px var(--blue); overflow: hidden; display: grid; place-items: center; font-weight: 800; }
@@ -174,6 +174,69 @@ canvas.glyph { border-radius: 4px; }
 
 @media (min-aspect-ratio: 5/4) and (max-height: 520px) {
   .reader { left: auto; width: 46%; }
-  .core-dock { left: auto; right: 0; top: 0; bottom: 0; width: 46%; }
   .fit { left: auto; right: 14px; width: 220px; }
+}
+
+/* Bond: the zipper rails */
+.track { position: absolute; pointer-events: auto !important; touch-action: none; cursor: crosshair; border-radius: 10px; }
+.track canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bond-dock { gap: 6px; }
+.bond-dock .row { flex-wrap: wrap; gap: 6px; }
+.bond-dock .chip { padding: 8px 12px; min-height: 42px; }
+.bond-dock .cmp { min-height: 46px; padding-block: 8px 10px; font-size: 17px; }
+.minimap { position: absolute; width: 112px; height: 112px; border-radius: 6px; box-shadow: 0 0 0 2.5px var(--blue); }
+
+/* Shell: the patch brush and the opened interface */
+.fit.detector i { background: var(--pink); }
+.surf-dock .row { flex-wrap: wrap; gap: 6px; }
+.book { position: absolute; pointer-events: auto !important; touch-action: none; }
+.book canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.salt-dock { pointer-events: auto !important; gap: 6px; }
+.saltread { margin: 0; font-weight: 700; font-size: 14px; line-height: 1.2; background: rgba(255,255,255,.75); padding: 4px 8px; border-radius: 8px; text-align: center; max-width: 34em; }
+input.salt { width: min(100%, 460px); height: 34px; accent-color: var(--pink); pointer-events: auto; }
+.facts { border-collapse: collapse; width: 100%; font-size: 15px; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.facts th { text-align: left; font-weight: 750; border-bottom: 2px solid currentColor; }
+.facts td, .facts th { padding: 3px 8px 3px 0; }
+.scatter { width: 100%; max-width: 340px; display: block; margin: 8px 0; }
+
+@media (min-width: 900px) {
+  .fit { left: 50%; right: auto; width: 460px; margin-left: -230px; }
+}
+@media (min-aspect-ratio: 5/4) and (max-height: 520px) {
+  .hud .goal { max-width: 47%; font-size: 14px; }
+}
+
+/* Second pass: tables, sliders and the cage */
+.knobtable { position: absolute; pointer-events: none; background: rgba(255,255,255,.72); border-radius: 10px; padding: 0 8px; }
+.knobtable:empty { display: none; }
+.knobtable .facts { margin: 4px 0; font-size: 13.5px; }
+.knob-dock .row { flex-wrap: wrap; }
+.scorepanel { position: absolute; pointer-events: auto !important; display: flex; flex-direction: column; gap: 6px; align-items: stretch; background: rgba(255,255,255,.55); border-radius: 12px; padding: 6px 8px; }
+.patchtable { margin: 0; font-size: 14px; }
+.patchtable td, .patchtable th { padding: 2px 6px 2px 0; }
+.chip.pick { min-height: 36px; padding: 4px 10px; white-space: nowrap; }
+.tray.bench { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.tray.bench .row { display: flex; gap: 8px; justify-content: center; }
+.tiltrow { display: flex; align-items: center; gap: 8px; width: min(100%, 460px); font-weight: 750; font-size: 14px; pointer-events: auto; }
+.tiltrow span { width: 3.6em; flex: none; }
+.tiltrow input.salt { flex: 1; width: auto; }
+.tilt-dock { gap: 2px; }
+.cage-dock { pointer-events: auto !important; gap: 6px; bottom: calc(8px + var(--sab)); }
+.cage-dock .row { flex-wrap: wrap; gap: 6px; }
+.chip.kind { padding: 8px 12px; background: rgba(255,255,255,.7); }
+.chip.kind.on { background: var(--blue); color: var(--yellow); }
+.chip.kind.self { box-shadow: inset 0 0 0 3px var(--pink); }
+.cycle { position: absolute; left: 8px; right: 8px; bottom: calc(10px + var(--sab)); top: 128px; pointer-events: auto !important; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; }
+.cyc { border-collapse: separate; border-spacing: 5px; font-weight: 800; font-size: 15px; }
+.cell2 { pointer-events: auto; width: min(15vw, 66px); height: 54px; border-radius: 10px; background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 2.5px var(--blue); font-weight: 800; font-size: 15px; }
+.cell2.spent { box-shadow: inset 0 0 0 3.5px var(--blue); font-size: 19px; }
+.cycread { max-width: 30em; font-weight: 650; }
+.cycread p { margin: 0; text-align: center; }
+.knob-dock .chip.big { font-size: 15.5px; padding-inline: 10px; min-height: 46px; }
+@media (min-aspect-ratio: 5/4) and (max-height: 520px) {
+  .cycle { top: 54px; left: 49%; bottom: 4px; gap: 2px; }
+  .cyc { border-spacing: 2px; font-size: 12px; }
+  .cell2 { height: 36px; width: 56px; font-size: 13px; }
+  .cell2.spent { font-size: 15px; }
+  .cycread { font-size: 13px; }
 }

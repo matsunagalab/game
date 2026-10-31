@@ -1,44 +1,27 @@
-// The player's force field, the reference values, and everything that survives a reload.
-import { RAD_FS_TO_CM, ACC } from './physics/md.js';
-
-export const REF = {
-  CH: { k: 340, r0: 1.09, m1: 12.011, m2: 1.008, name: 'C–H', type: 'CT-HC' },
-  OH: { k: 553, r0: 0.9572, m1: 15.999, m2: 1.008, name: 'O–H', type: 'OW-HW' },
-  CC: { k: 310, r0: 1.526, m1: 12.011, m2: 12.011, name: 'C–C', type: 'CT-CT' },
-  V: [1.411, -0.271, 3.145],
-  thetaHOH: 104.52, bend: 1595,
-  sigmaAr: 3.405, epsAr: 0.238, sigmaDimer: 3.347, epsDimer: 0.2846,
-  qO: -0.834, qGas: -0.659, muGas: 1.855,
-};
-
-export const wavenumber = (k, m1, m2) => Math.sqrt(2 * k * (1 / m1 + 1 / m2) * ACC) * RAD_FS_TO_CM;
-
+// The player's force field and everything that survives a reload.
 export const PLATES = [
-  { id: 'pluck',  term: 0, no: 'I',    title: 'One bond, plucked' },
-  { id: 'harp',   term: 0, no: 'II',   title: 'Three strings' },
-  { id: 'well',   term: 0, no: 'III',  title: 'Where the bond rests' },
-  { id: 'chord',  term: 1, no: 'IV',   title: 'The chord of water' },
-  { id: 'step',   term: 1, no: 'V',    title: 'How big a time step?' },
-  { id: 'organ',  term: 2, no: 'VI',   title: 'Butane, seen end on' },
-  { id: 'expose', term: 2, no: 'VII',  title: 'A long exposure' },
-  { id: 'dimer',  term: 3, no: 'VIII', title: 'Two argon atoms' },
-  { id: 'drop',   term: 3, no: 'IX',   title: 'A drop of liquid argon' },
-  { id: 'dipole', term: 4, no: 'X',    title: 'One water, in the gas' },
-  { id: 'liquid', term: 4, no: 'XI',   title: 'A drop of water' },
-  { id: 'map',    term: 5, no: 'XII',  title: 'The backbone map' },
-  { id: 'fold',   term: 5, no: 'XIII', title: 'Run your force field' },
+  { id: 'organ',  term: 0, no: 'I',    title: 'Organ stops' },
+  { id: 'helix',  term: 0, no: 'II',   title: 'A tenth of a kcal/mol' },
+  { id: 'cross',  term: 1, no: 'III',  title: 'What torsions cannot do' },
+  { id: 'paint',  term: 1, no: 'IV',   title: 'Painting the map' },
+  { id: 'esp',    term: 2, no: 'V',    title: 'Charges from a field' },
+  { id: 'liquid', term: 2, no: 'VI',   title: 'A dipole for two worlds' },
+  { id: 'salt',   term: 2, no: 'VII',  title: 'The salt bridge' },
+  { id: 'argon',  term: 3, no: 'VIII', title: 'A liquid from two numbers' },
+  { id: 'chain',  term: 3, no: 'IX',   title: 'The chain that collapses' },
+  { id: 'pair',   term: 3, no: 'X',    title: 'Protein, water, protein' },
+  { id: 'sampling', term: 4, no: 'XI', title: 'Force field or sampling?' },
+  { id: 'meta',   term: 4, no: 'XII',  title: 'Metastable' },
 ];
 
 export const TIERS = ['', 'Major revision', 'Minor revision', 'Accepted'];
 
-const KEY = 'ff-learner-1';
+const KEY = 'ff-learner-4-force-field-development';
 const blank = () => ({
   tiers: {},
   ff: {
-    CH: null, OH: null, CC: null, r0CH: null, kCH2: null,
-    kTheta: null, theta: null, dt: null, V: null,
-    sigmaDimer: null, epsDimer: null, sigma: null, eps: null,
-    qGas: null, q: null, map: null, antiShare: null, muted: false,
+    V: null, on14: false, kPsi: null, sTrade: null, cmapDone: false, q: null, respA: null, qWater: null,
+    qSalt: null, rArg: null, rLys: null, sigma: null, eps: null, gamma: null, E: null, meta: null, card: null, muted: false,
   },
 });
 
@@ -62,36 +45,28 @@ export function resetSave() {
   persist();
 }
 
-const f1 = v => v.toFixed(1).padStart(7), f3 = v => v.toFixed(3).padStart(7), f4 = v => v.toFixed(4).padStart(8);
+const n = (v, d = 3) => (v == null ? '(not fitted)' : Number(v).toFixed(d));
 
-// The player's parameters as an AMBER frcmod file.
+// The player's parameters, as a plain parameter file.
 export function frcmod() {
   const { ff } = save;
-  const L = ['ff26 hand tuned', ''];
-  const bond = [];
-  if (ff.CH != null) bond.push(`CT-HC  ${f1(ff.CH)} ${f3(ff.r0CH ?? REF.CH.r0)}`);
-  if (ff.OH != null) bond.push(`OW-HW  ${f1(ff.OH)} ${f3(REF.OH.r0)}`);
-  if (ff.CC != null) bond.push(`CT-CT  ${f1(ff.CC)} ${f3(REF.CC.r0)}`);
-  L.push('BOND', ...(bond.length ? bond : ['(empty)']), '');
-  L.push('ANGL', ...(ff.kTheta != null ? [`HW-OW-HW ${f1(ff.kTheta)} ${ff.theta.toFixed(2).padStart(7)}`] : ['(empty)']), '');
-  const dih = [];
-  if (ff.V) ff.V.forEach((v, i) => {
-    const signs = [0, 180, 0];                // V₂ is written with γ=180° in the OPLS form
-    const k = v / 2;
-    dih.push(`CT-CT-CT-CT 1 ${f3(Math.abs(k))} ${((k < 0 ? 180 : 0) + signs[i]) % 360 === 0 ? '  0.0' : '180.0'} ${i + 1}`);
-  });
-  L.push('DIHE', ...(dih.length ? dih : ['(empty)']), '');
-  const non = [];
-  if (ff.sigma != null) non.push(`Ar  ${f3(ff.sigma * 2 ** (1 / 6) / 2)} ${f4(ff.eps)}`);
-  L.push('NONB', ...(non.length ? non : ['(empty)']), '');
-  if (ff.q != null) L.push('CHARGE', `OW ${f3(ff.q)}`, `HW ${f3(-ff.q / 2)}`, '');
-  if (ff.map) L.push('CMAP', 'ALA  24×24 grid, hand sculpted', '');
+  const L = ['ff26: developed by hand', ''];
+  L.push('DIHE  butane, kcal/mol');
+  if (ff.V) ff.V.forEach((v, i) => L.push(`  V${i + 1}  ${n(v, 2)}`));
+  else L.push('  (not fitted)');
+  L.push(`  1-4 nonbonded  ${ff.on14 ? 'on, scaled 1/2' : 'off'}`, '');
+  L.push(`HELIX  psi correction k = ${n(ff.kPsi)} kcal/mol, enthalpy-entropy trade = ${n(ff.sTrade, 2)} kcal/mol`, '');
+  L.push(`CMAP  24x24 grid: ${ff.cmapDone ? 'painted' : '(not painted)'}`, '');
+  L.push('CHARGE  N-methylacetamide, e');
+  if (ff.q) ff.q.forEach((v, i) => L.push(`  ${['CA', 'HA', 'C', 'O', 'N', 'HN', 'CM', 'HM'][i].padEnd(3)} ${n(v)}`));
+  else L.push('  (not fitted)');
+  L.push(`  RESP restraint a = ${n(ff.respA, 4)} au`, `  water qO = ${n(ff.qWater)}`, '');
+  L.push(`NBFIX  charge scale ${n(ff.qSalt)}`, `  Arg-Asp Rmin ${n(ff.rArg)}`, `  Lys-Asp Rmin ${n(ff.rLys)}`, '');
+  L.push(`NONB  argon sigma ${n(ff.sigma)}  eps ${n(ff.eps)}`, `  protein-water scale ${n(ff.gamma)}`, `  protein-protein scale ${n(ff.E)}`, '');
+  if (ff.meta) L.push('FINALE', ...Object.entries(ff.meta).map(([k, v]) => `  ${k.padEnd(8)} ${n(v)}`));
   return L.join('\n');
 }
 
 export function nextPlate() {
   return PLATES.findIndex(p => !save.tiers[p.id]);
-}
-export function fiveDone() {
-  return PLATES.filter(p => p.term < 5).every(p => save.tiers[p.id]);
 }

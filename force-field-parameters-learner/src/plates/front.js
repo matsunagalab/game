@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Plate } from './base.js';
 import { Atoms, Sticks, INK } from '../gfx.js';
-import { Ribbon } from './whole.js';
+import { Ribbon } from './ribbon.js';
 import { backbone } from '../physics/peptide.js';
 import { save } from '../save.js';
 
@@ -11,7 +11,7 @@ const RES = 22;
 export class Front extends Plate {
   enter() {
     const r = this.root;
-    const won = !!save.tiers.fold;
+    const won = !!save.tiers.meta;
     const b = backbone(Array(RES).fill([-60, -45]));
     let cx = 0, cy = 0, cz = 0;
     b.forEach(p => { cx += p.CA[0]; cy += p.CA[1]; cz += p.CA[2]; });

@@ -54,7 +54,7 @@ export class Sound {
   // One more voice for each finished term, so the music grows with the force field.
   setProgress(n) {
     if (!this.ctx) return;
-    const parts = [734 / 2, 399 / 2, 165, 552 / 2, 464, 734];
+    const parts = [734 / 2, 399 / 2, 165, 552 / 2, 464];
     while ((this.grown ?? 0) < Math.min(n, parts.length)) { this.addVoice(parts[this.grown ?? 0], 0.42); this.grown = (this.grown ?? 0) + 1; }
   }
 
@@ -160,6 +160,12 @@ export class Sound {
     if (!this.ctx) return;
     const notes = [1104, 1337, 2208, 2936, 3709].map(v => v * CM_TO_HZ);
     notes.slice(0, 2 + tier).forEach((h, i) => setTimeout(() => this.pluck(h, 0.34, 3.2), i * 110));
+  }
+
+  // A short rising chord when a fit snaps into place: one more note for each goal.
+  snap(tier = 1) {
+    if (!this.ctx) return;
+    [1104, 1337, 1656, 2208].slice(0, tier + 1).forEach((v, i) => setTimeout(() => this.pluck(v * CM_TO_HZ, 0.22, 1.6), i * 55));
   }
 
   stamp() {

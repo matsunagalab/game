@@ -1,0 +1,114 @@
+// Exact census for the finale: every self-avoiding walk of 16 beads on the cubic lattice, tallied by the integers
+// that the energy terms depend on. Because U is linear in those integers, any parameter set is one sum over this table.
+//   c   bead-bead contacts                     (vdW and protein-water)
+//   qn  contacts of the native fold, a helix-like square spiral
+//   qa  contacts of the misfold, a flat four-strand sheet
+//   d   backbone shape: helix-like corners minus straight strand-like runs (dihedral/CMAP)
+//   e   charge contacts: opposite pairs minus like pairs (electrostatics)
+//   w   buried water: empty sites with at least 4 chain neighbours (a wet core)
+// Build and run: cc -O3 -o /tmp/fold tools/enumerate_fold.c && /tmp/fold > src/physics/fold-table.js
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#define N 16
+#define G 64
+#define CAP (1 << 22)
+static signed char occ[G][G][G];
+static int X[N], Y[N], Z[N];
+static char natN[N][N], natA[N][N];
+static const int D[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+static const int CH[N] = {0,1,0,0, 0,0,-1,0, 0,1,0,0, 0,0,-1,0};   // charges: patterned so the misfold gains salt bridges
+static double weight;
+static uint64_t keys[CAP]; static double cnt[CAP], rg[CAP]; static int used;
+
+static void add(uint64_t k, double r) {
+  uint64_t h = (k * 0x9E3779B97F4A7C15ULL) >> 42;
+  for (;;) {
+    if (!cnt[h]) { keys[h] = k; used++; if (used > CAP / 2) { fprintf(stderr, "table full\n"); exit(1); } }
+    if (keys[h] == k) { cnt[h] += weight; rg[h] += weight * r; return; }
+    h = (h + 1) & (CAP - 1);
+  }
+}
+static void leaf(int c, int qn, int qa, int e) {
+  double sx = 0, sy = 0, sz = 0, s2 = 0;
+  for (int i = 0; i < N; i++) { sx += X[i]; sy += Y[i]; sz += Z[i]; s2 += X[i]*X[i] + Y[i]*Y[i] + Z[i]*Z[i]; }
+  double r = s2 / N - (sx*sx + sy*sy + sz*sz) / ((double)N*N);
+  // Backbone shape from each run of four beads.
+  int d = 0;
+  for (int i = 0; i + 3 < N; i++) {
+    int a[3] = {X[i+1]-X[i], Y[i+1]-Y[i], Z[i+1]-Z[i]};
+    int b[3] = {X[i+2]-X[i+1], Y[i+2]-Y[i+1], Z[i+2]-Z[i+1]};
+    int f[3] = {X[i+3]-X[i+2], Y[i+3]-Y[i+2], Z[i+3]-Z[i+2]};
+    int t = a[0]*(b[1]*f[2]-b[2]*f[1]) - a[1]*(b[0]*f[2]-b[2]*f[0]) + a[2]*(b[0]*f[1]-b[1]*f[0]);
+    if (t > 0) d++;                                          // right-handed corner, helix-like
+    else if (a[0]==b[0] && a[1]==b[1] && a[2]==b[2]) d--;    // straight run, strand-like
+    if (b[0]==f[0] && b[1]==f[1] && b[2]==f[2] && i + 4 == N) d--;   // the last run has no later window to count it
+  }
+  // Buried water: empty neighbour sites surrounded by at least 4 beads.
+  int w = 0;
+  static int stamp[G][G][G], now = 0;
+  now++;
+  for (int i = 0; i < N; i++) for (int e2 = 0; e2 < 6; e2++) {
+    int x = X[i]+D[e2][0], y = Y[i]+D[e2][1], z = Z[i]+D[e2][2];
+    if (occ[x][y][z] || stamp[x][y][z] == now) continue;
+    stamp[x][y][z] = now;
+    int n = 0;
+    for (int f = 0; f < 6; f++) if (occ[x+D[f][0]][y+D[f][1]][z+D[f][2]]) n++;
+    if (n >= 4) w++;
+  }
+  if (w > 7) w = 7;
+  // Low overlaps with the misfold carry no meaning, so they are merged to keep the table small.
+  int qb = qa < 3 ? 0 : qa;
+  add((uint64_t)c | (uint64_t)qn << 5 | (uint64_t)qb << 10 | (uint64_t)(d + 32) << 15 | (uint64_t)(e + 16) << 22 | (uint64_t)w << 28, r);
+}
+static void grow(int k, int c, int qn, int qa, int e) {
+  if (k == N) { leaf(c, qn, qa, e); return; }
+  for (int d = 0; d < 6; d++) {
+    int x = X[k-1]+D[d][0], y = Y[k-1]+D[d][1], z = Z[k-1]+D[d][2];
+    if (occ[x][y][z]) continue;
+    int dc = 0, dn = 0, da = 0, de = 0;
+    for (int f = 0; f < 6; f++) {
+      int o = occ[x+D[f][0]][y+D[f][1]][z+D[f][2]];
+      if (o && o - 1 != k - 1) { dc++; dn += natN[o-1][k]; da += natA[o-1][k]; de -= CH[o-1] * CH[k]; }
+    }
+    occ[x][y][z] = k + 1; X[k] = x; Y[k] = y; Z[k] = z;
+    grow(k + 1, c + dc, qn + dn, qa + da, e + de);
+    occ[x][y][z] = 0;
+  }
+}
+static int contacts(int (*p)[3], char m[N][N]) {
+  int n = 0;
+  for (int i = 0; i < N; i++) for (int j = i + 2; j < N; j++)
+    if (abs(p[i][0]-p[j][0]) + abs(p[i][1]-p[j][1]) + abs(p[i][2]-p[j][2]) == 1) { m[i][j] = m[j][i] = 1; n++; }
+  return n;
+}
+int main(void) {
+  static const int ring[4][2] = {{0,0},{1,0},{1,1},{0,1}};
+  int nat[N][3], alt[N][3];
+  for (int i = 0; i < N; i++) { int k = (i + (i/4)*3) % 4; nat[i][0] = ring[k][0]; nat[i][1] = ring[k][1]; nat[i][2] = i/4; }
+  for (int i = 0; i < N; i++) { int row = i/4, s = i%4; alt[i][0] = row % 2 ? 3 - s : s; alt[i][1] = row; alt[i][2] = 0; }
+  int Qn = contacts(nat, natN), Qa = contacts(alt, natA);
+  int o = G/2;
+  X[0]=o; Y[0]=o; Z[0]=o; occ[o][o][o]=1;
+  X[1]=o+1; Y[1]=o; Z[1]=o; occ[o+1][o][o]=2;
+  int e0 = 0;
+  X[2]=o+2; Y[2]=o; Z[2]=o; occ[o+2][o][o]=3; weight = 6; grow(3,0,0,0,e0); occ[o+2][o][o]=0;
+  X[2]=o+1; Y[2]=o+1; Z[2]=o; occ[o+1][o+1][o]=3; weight = 24; grow(3,0,0,0,e0); occ[o+1][o+1][o]=0;
+  double total = 0;
+  printf("// Generated by tools/enumerate_fold.c: an exact census of every 16-bead self-avoiding lattice walk.\n");
+  printf("// Each row: c, Qn, Qa (0 means under 3), d, e, w, number of walks, sum of Rg².\n");
+  printf("export const FOLD_QN = %d, FOLD_QA = %d;\n", Qn, Qa);
+  printf("export const CHARGES = ["); for (int i = 0; i < N; i++) printf("%d,", CH[i]); printf("];\n");
+  printf("export const NATIVE_F = ["); for (int i = 0; i < N; i++) printf("[%d,%d,%d],", nat[i][0], nat[i][1], nat[i][2]); printf("];\n");
+  printf("export const MISFOLD = ["); for (int i = 0; i < N; i++) printf("[%d,%d,%d],", alt[i][0], alt[i][1], alt[i][2]); printf("];\n");
+  printf("export const FOLD_ROWS = [\n");
+  for (int h = 0; h < CAP; h++) if (cnt[h] > 0) {
+    uint64_t k = keys[h];
+    printf("%d,%d,%d,%d,%d,%d,%.0f,%.5g,\n", (int)(k&31), (int)((k>>5)&31), (int)((k>>10)&31), (int)((k>>15)&127)-32, (int)((k>>22)&63)-16, (int)((k>>28)&7), cnt[h], rg[h]);
+    total += cnt[h];
+  }
+  printf("];\nexport const FOLD_TOTAL = %.0f;\n", total);
+  fprintf(stderr, "rows %d total %.0f Qn %d Qa %d\n", used, total, Qn, Qa);
+  return 0;
+}

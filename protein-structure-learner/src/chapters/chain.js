@@ -11,7 +11,7 @@ import { IslandMap, PLACES, landShare } from './map.js';
 const ELEMENT_INK = { C: TONE.carbon, N: TONE.nitrogen, O: TONE.oxygen, H: TONE.hydrogen };
 
 // A chain of peptide cards, the way Pauling folded his on paper.
-class CardChain {
+export class CardChain {
   constructor(scene, nRes, { chains = 1, heavy = 0.4, hydrogen = 0.24, stick = 0.15 } = {}) {
     this.scene = scene;
     this.heavy = heavy;

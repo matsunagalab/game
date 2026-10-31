@@ -1,5 +1,6 @@
 // Everything drawn in HTML: the plate header, sliding rulers, reviewer notes and verdicts.
 import { TIERS, frcmod } from './save.js';
+import { Stops } from './stops.js';
 
 const $ = id => document.getElementById(id);
 const SUB = { '₀': '0', '₁': '1', '₂': '2', '₃': '3' }, SUP = { '⁻': '−', '⁶': '6', '⁹': '9', '¹': '1', '²': '2', '³': '3' };
@@ -11,10 +12,10 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 // A ruler that slides under a fixed needle, like the dial of an old radio.
 // The scale is several screens long, so a thumb can place a value finely with no modifier keys.
 export class Ruler {
-  constructor(parent, { label, unit = '', min, max, step = 1, value, digits = 1, major, span = 3.2, onInput, onRelease, sound, format }) {
+  constructor(parent, { label, unit = '', min, max, step = 1, value, digits = 1, major, span = 3.2, onInput, onRelease, sound, format, compact = false }) {
     Object.assign(this, { min, max, step, digits, major: major ?? (max - min) / 10, span, onInput, onRelease, sound, format, unit });
     this.value = value; this.vel = 0;
-    const root = this.root = el('div', 'ruler');
+    const root = this.root = el('div', compact ? 'ruler compact' : 'ruler');
     root.tabIndex = 0;
     root.setAttribute('role', 'slider');
     root.setAttribute('aria-label', label.replace(/<[^>]+>/g, ''));
@@ -130,6 +131,80 @@ export class UI {
     $('sheet').classList.add('open');
   }
 
+  // Three goals, shown as pips. The line under them always names the next one.
+  goals(list) {
+    this.goalList = list;
+    const g = $('goals');
+    g.style.display = '';
+    this.goalTop = 0;
+    this.showGoals(0);
+  }
+  showGoals(t) {
+    if (!this.goalList) return;
+    const g = $('goals');
+    const pips = [1, 2, 3].map(i => `<i class="${t >= i ? 'on' : ''}"></i>`).join('');
+    const text = t >= 3 ? 'All three goals met.' : this.goalList[t];
+    g.innerHTML = `<span class="pips">${pips}</span><span class="goal-text">${typeset(text)}</span>`;
+    this.layout?.();
+  }
+
+  // The test board: one lamp per observable, like a continuous-integration dashboard.
+  lights(defs) {
+    const wrap = el('div', 'lights');
+    wrap.dataset.n = defs.length;
+    $('custom').append(wrap);
+    const out = {};
+    for (const [key, label] of defs) {
+      const d = el('div', 'light'), lamp = el('b', 'lamp'), v = el('span', 'light-value');
+      d.append(lamp, el('span', 'light-label', label), v);
+      wrap.append(d);
+      let state = -1, cur = '';
+      out[key] = {
+        set: (html, s) => {
+          if (html !== cur) { cur = html; v.innerHTML = typeset(html); }
+          if (s === state) return;
+          if (state === 2 && s < 2) { d.classList.remove('broke'); void d.offsetWidth; d.classList.add('broke'); this.sound.tick(0.35); }
+          if (state >= 0 && s === 2) this.sound.ping(defs.findIndex(x => x[0] === key), 0.1);
+          state = s;
+          d.dataset.s = s;
+        },
+        get state() { return state; },
+      };
+    }
+    this.layout?.();
+    return out;
+  }
+
+  stops(defs) {
+    const s = new Stops($('custom'), defs, this.sound);
+    this.layout?.();
+    return s;
+  }
+
+  // Several knobs that share one line: tabs choose which ruler is on show.
+  knobs(defs, extra = null) {
+    const bar = el('div', 'tabs');
+    this.rulers$.append(bar);
+    const rs = defs.map(d => this.ruler({ compact: true, ...d }));
+    const all = extra ? [...defs, extra] : defs;
+    if (extra) this.rulers$.append(extra.el);
+    const tabs = all.map((d, i) => {
+      const b = el('button', 'tab', d.tab);
+      b.addEventListener('click', () => pick(i));
+      bar.append(b);
+      return b;
+    });
+    const pick = i => {
+      rs.forEach((r, k) => { r.root.style.display = k === i ? '' : 'none'; });
+      tabs.forEach((t, k) => t.classList.toggle('on', k === i));
+      if (extra) extra.el.style.display = i === defs.length ? '' : 'none';
+      if (i < rs.length) rs[i].resize();
+      this.layout?.();
+    };
+    pick(0);
+    return rs;
+  }
+
   plate(p, partName) {
     $('hud').classList.add('on');
     $('plate-no').textContent = `Plate ${p.no}, ${partName}`;
@@ -144,6 +219,8 @@ export class UI {
     this.readouts$.innerHTML = ''; this.rulers$.innerHTML = ''; this.actions$.innerHTML = '';
     $('tags').innerHTML = '';
     $('custom').innerHTML = '';
+    $('goals').innerHTML = ''; $('goals').style.display = 'none';
+    this.goalList = null;
     this.rulers = []; this.tags = []; this.sendBtn = null;
   }
 
@@ -196,7 +273,9 @@ export class UI {
   setTier(tier) {
     if (!this.sendBtn) return;
     if (tier === this.tier) return;
+    if (tier > this.tier) this.sound.snap(tier);
     this.tier = tier;
+    this.showGoals(tier);
     const b = this.sendBtn;
     b.disabled = tier === 0;
     b.classList.toggle('ready', tier === 3);

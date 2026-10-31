@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mapValue } from '../src/peptide.js';
+import { sasa as shrakeRupley, VDW } from '../src/science/sasa.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PDB_DIR = process.argv[2];
@@ -12,7 +13,7 @@ if (!PDB_DIR) throw new Error('Give the folder that holds the PDB files.');
 
 // context: extra chains that count as "neighbours" when measuring burial, but are not exported.
 const SPECS = [
-  { key: 'hemoglobin', pdb: '2HHB', chains: ['A', 'B', 'C', 'D'], het: ['HEM'] },
+  { key: 'hemoglobin', pdb: '2HHB', chains: ['A', 'B', 'C', 'D'], het: ['HEM'], pairs: [['A', 'B'], ['A', 'D']] },
   { key: 'gcn4', pdb: '2ZTA', chains: ['A', 'B'] },
   { key: 'nanobody', pdb: '1MEL', chains: ['A'] },
   { key: 'myoglobin', pdb: '1MBN', chains: ['A'], het: ['HEM'] },
@@ -25,6 +26,14 @@ const SPECS = [
   { key: 'protease', pdb: '1HSG', chains: ['A'], symChains: ['A', 'B'], het: ['MK1'] },
   { key: 'ctxb', pdb: '3CHB', chains: ['D'], symChains: ['D', 'E', 'F', 'G', 'H'] },
   { key: 'stnv', pdb: '2BUK', chains: ['A'], biomt: true },
+  // Added for the Bond, Core and Shell chapters. Each 'pairs' entry measures the burial between two chains.
+  { key: 'barnase', pdb: '1BRS', chains: ['A', 'D'], pairs: [['A', 'D']], waters: true },
+  // 3HHR has the hormone with both receptors: its contacts to chain C mark the second site, absent from 1A22.
+  { key: 'ghr', pdb: '1A22', chains: ['A', 'B'], pairs: [['A', 'B']], secondSite: { pdb: '3HHR', own: 'A', partner: 'C' } },
+  { key: 'gcn4tri', pdb: '1GCM', chains: ['A', 'B', 'C'] },
+  { key: 'gcn4tet', pdb: '1GCL', chains: ['A', 'B', 'C', 'D'] },
+  { key: 'pihelix', pdb: '1YAC', chains: ['A'], window: [106, 133] },
+  { key: 't4l', pdb: '2LZM', chains: ['A'], hetFrom: { pdb: '181L', chain: 'A', name: 'BNZ' } },
 ];
 
 const THREE = {
@@ -115,61 +124,10 @@ function residuesOf(atoms, chain) {
     .filter((r) => r.ca && r.n && r.c && r.o);
 }
 
-// Shrake and Rupley: how much of each atom's probe sphere is not covered by neighbours.
-function sasa(atoms) {
-  const POINTS = 92;
-  const unit = [];
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < POINTS; i++) {
-    const y = 1 - (2 * (i + 0.5)) / POINTS;
-    const r = Math.sqrt(1 - y * y);
-    unit.push([Math.cos(golden * i) * r, y, Math.sin(golden * i) * r]);
-  }
-  const PROBE = 1.4;
-  const CELL = 7;
-  const grid = new Map();
-  const keyOf = (x, y, z) => `${Math.floor(x / CELL)},${Math.floor(y / CELL)},${Math.floor(z / CELL)}`;
-  atoms.forEach((a, i) => {
-    const k = keyOf(a.x, a.y, a.z);
-    if (!grid.has(k)) grid.set(k, []);
-    grid.get(k).push(i);
-  });
-  return atoms.map((a) => {
-    const ra = (RADIUS[a.el] ?? 1.7) + PROBE;
-    const near = [];
-    const cx = Math.floor(a.x / CELL);
-    const cy = Math.floor(a.y / CELL);
-    const cz = Math.floor(a.z / CELL);
-    for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++)
-        for (let k = -1; k <= 1; k++) {
-          const cell = grid.get(`${cx + i},${cy + j},${cz + k}`);
-          if (!cell) continue;
-          for (const idx of cell) {
-            const b = atoms[idx];
-            if (b === a) continue;
-            const rb = (RADIUS[b.el] ?? 1.7) + PROBE;
-            const d2 = (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2;
-            if (d2 < (ra + rb) ** 2) near.push([b.x, b.y, b.z, rb * rb]);
-          }
-        }
-    let open = 0;
-    for (const u of unit) {
-      const px = a.x + u[0] * ra;
-      const py = a.y + u[1] * ra;
-      const pz = a.z + u[2] * ra;
-      let free = true;
-      for (const n of near) {
-        if ((px - n[0]) ** 2 + (py - n[1]) ** 2 + (pz - n[2]) ** 2 < n[3]) {
-          free = false;
-          break;
-        }
-      }
-      if (free) open++;
-    }
-    return ((4 * Math.PI * ra * ra) * open) / POINTS;
-  });
-}
+// Solvent accessible surface of a list of atoms, in square angstroms per atom.
+const radiiOf = (atoms) => atoms.map((a) => VDW[a.el] ?? 1.7);
+const flatXYZ = (atoms) => atoms.flatMap((a) => [a.x, a.y, a.z]);
+const sasa = (atoms, blockers = null) => shrakeRupley(flatXYZ(atoms), radiiOf(atoms), { blockers });
 
 // Best rotation and translation taking P onto Q (Horn's quaternion method, Jacobi eigensolver).
 function fit(P, Q) {
@@ -237,12 +195,13 @@ const apply = (m, p) => [
   m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
 ];
 
+const u8 = (values) => Buffer.from(Uint8Array.from(values.map((v) => Math.min(255, Math.round(v))))).toString('base64');
 const b64 = (typed) => Buffer.from(typed.buffer, typed.byteOffset, typed.byteLength).toString('base64');
 const int16 = (values) => b64(Int16Array.from(values.map((v) => Math.round(v * 100))));
 
 function build(spec) {
   const pdb = parsePdb(readFileSync(join(PDB_DIR, `${spec.pdb}.pdb`), 'utf8'));
-  const residues = spec.chains.flatMap((c) => residuesOf(pdb.atoms, c));
+  const residues = spec.chains.flatMap((c) => residuesOf(pdb.atoms, c)).filter((r) => !spec.window || (r.seq >= spec.window[0] && r.seq <= spec.window[1]));
 
   // Secondary structure from the depositors' HELIX and SHEET records.
   for (const r of residues) r.ss = 'C';
@@ -274,6 +233,20 @@ function build(spec) {
   const hetAtoms = (spec.het ?? []).flatMap((name) =>
     pdb.atoms.filter((a) => a.res === name && spec.chains.concat(spec.symChains ?? []).includes(a.chain)),
   );
+  // A ligand seen only in a mutant structure, carried into this frame by a backbone fit.
+  if (spec.hetFrom) {
+    const other = parsePdb(readFileSync(join(PDB_DIR, `${spec.hetFrom.pdb}.pdb`), 'utf8'));
+    const theirs = residuesOf(other.atoms, spec.hetFrom.chain);
+    const pairs = residues.flatMap((r) => {
+      const o = theirs.find((x) => x.seq === r.seq);
+      return o ? [[[o.ca.x, o.ca.y, o.ca.z], [r.ca.x, r.ca.y, r.ca.z]]] : [];
+    });
+    const m = fit(pairs.map((p) => p[0]), pairs.map((p) => p[1]));
+    for (const a of other.atoms.filter((x) => x.res === spec.hetFrom.name)) {
+      const [x, y, z] = apply(m, [a.x, a.y, a.z]);
+      hetAtoms.push({ ...a, x, y, z });
+    }
+  }
 
   // Symmetry operators in the original PDB frame.
   let ops = null;
@@ -307,7 +280,7 @@ function build(spec) {
   });
 
   // Burial of each residue, measured inside the exported chains plus any bound groups.
-  const context = spec.symChains ? all : [...all, ...hetAtoms];
+  const context = spec.symChains || spec.hetFrom ? all : [...all, ...hetAtoms];
   const area = sasa(context);
   let k = 0;
   for (const r of residues) {
@@ -334,6 +307,21 @@ function build(spec) {
     r.hse = n;
   }
 
+  // Interfaces. For each pair of chains, the area each atom loses when the partner arrives.
+  const pairAtoms = (name) => residues.filter((r) => r.chain === name).flatMap((r) => r.atoms);
+  const iface = (spec.pairs ?? []).map(([A, B]) => {
+    const aa = pairAtoms(A);
+    const bb = pairAtoms(B);
+    const lostA = Array.from(sasa(aa), (v, i) => v - sasa1(aa, bb)[i]);
+    const lostB = Array.from(sasa(bb), (v, i) => v - sasa1(bb, aa)[i]);
+    const secondSite = spec.secondSite ? contactResidues(spec.secondSite) : undefined;
+    return { a: spec.chains.indexOf(A), b: spec.chains.indexOf(B), secondSite, area: Math.round(lostA.reduce((s, v) => s + v, 0) + lostB.reduce((s, v) => s + v, 0)),
+      nonpolar: Math.round((100 * (sumWhere(aa, lostA) + sumWhere(bb, lostB))) / (lostA.reduce((s, v) => s + v, 0) + lostB.reduce((s, v) => s + v, 0))),
+      ...polarContacts(aa, bb), waters: spec.waters ? bridgingWaters(pdb.atoms, aa, bb, c) : undefined, lostA, lostB, A, B };
+  });
+
+  const faces = ops ? symmetryFaces(residues, ops) : null;
+
   const flat = (pick) => residues.flatMap((r) => [pick(r).x - c[0], pick(r).y - c[1], pick(r).z - c[2]]);
   const chainIndex = residues.map((r) => spec.chains.indexOf(r.chain));
   const atomResidue = residues.flatMap((r, i) => r.atoms.map(() => i));
@@ -349,7 +337,6 @@ function build(spec) {
     rsa: residues.map((r) => Math.round(r.rsa * 100)),
     sse,
     hse: residues.map((r) => r.hse),
-    hse: residues.map((r) => r.hse),
     n: int16(flat((r) => r.n)),
     ca: int16(flat((r) => r.ca)),
     c: int16(flat((r) => r.c)),
@@ -364,7 +351,79 @@ function build(spec) {
       ? { xyz: int16(hetAtoms.flatMap((a) => [a.x - c[0], a.y - c[1], a.z - c[2]])), el: hetAtoms.map((a) => a.el[0]).join('') }
       : null,
     sym: symmetry ?? null,
+    ...(iface.length ? { iface: iface.map(({ lostA, lostB, ...rest }) => ({ ...rest, lostA: u8(lostA), lostB: u8(lostB) })) } : {}),
+    ...(faces ? { faces: faces.map(({ lost, ...rest }) => ({ ...rest, lost: u8(lost) })) } : {}),
+    // Surface of each atom with its own chain alone, for the patch brush.
+    ...(spec.pairs || ops ? { free: u8(spec.chains.flatMap((c) => Array.from(sasa(pairAtoms(c))))) } : {}),
   };
+}
+
+// For each atom, the surface it keeps with blockers present. Cached because every pair needs it twice.
+const seenSasa = new Map();
+function sasa1(atoms, blockers) {
+  const key = atoms.length + ':' + blockers.length + ':' + atoms[0].chain + blockers[0].chain + atoms[0].x;
+  if (!seenSasa.has(key)) seenSasa.set(key, sasa(atoms, { xyz: flatXYZ(blockers), radii: radiiOf(blockers) }));
+  return seenSasa.get(key);
+}
+const sumWhere = (atoms, lost) => atoms.reduce((s, a, i) => s + (a.el === 'C' || a.el === 'S' ? lost[i] : 0), 0);
+
+// Hydrogen bonds and salt bridges across an interface, by distance only.
+function polarContacts(aa, bb) {
+  const CHARGED = { ARG: ['NH1', 'NH2', 'NE'], LYS: ['NZ'] };
+  const ACID = { ASP: ['OD1', 'OD2'], GLU: ['OE1', 'OE2'] };
+  const near = new Set();
+  const salt = new Set();
+  for (const a of aa)
+    for (const b of bb) {
+      if (!'NO'.includes(a.el) || !'NO'.includes(b.el) || a.el + b.el === 'NN' || a.el + b.el === 'OO') continue;
+      const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      if (d < 3.5) near.add(`${a.chain}${a.seq}${a.name}-${b.chain}${b.seq}${b.name}`);
+      const base = CHARGED[a.res]?.includes(a.name) ? ACID[b.res]?.includes(b.name) : CHARGED[b.res]?.includes(b.name) && ACID[a.res]?.includes(a.name);
+      if (base && d < 4) salt.add(`${a.chain}${a.seq}-${b.chain}${b.seq}`);
+    }
+  return { hbonds: near.size, salt: salt.size };
+}
+
+// Residue numbers of one chain with a heavy atom within 4.5 A of another chain, in another entry.
+function contactResidues({ pdb, own, partner }) {
+  const atoms = parsePdb(readFileSync(join(PDB_DIR, `${pdb}.pdb`), 'utf8')).atoms;
+  const A = atoms.filter((a) => a.chain === own && !a.het);
+  const B = atoms.filter((a) => a.chain === partner && !a.het);
+  return [...new Set(A.filter((a) => B.some((b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2 < 20.25)).map((a) => a.seq))];
+}
+
+// Crystal waters within hydrogen-bond reach of both partners, as flat coordinates.
+function bridgingWaters(all, aa, bb, centre) {
+  const near = (w, list) => list.some((a) => 'NO'.includes(a.el) && Math.hypot(a.x - w.x, a.y - w.y, a.z - w.z) < 3.5);
+  return all.filter((a) => a.res === 'HOH' && near(a, aa) && near(a, bb)).flatMap((w) => [w.x - centre[0], w.y - centre[1], w.z - centre[2]]).map((v) => +v.toFixed(2));
+}
+
+// For a symmetric assembly: what each neighbouring copy hides on the reference copy, in the original frame.
+function symmetryFaces(residues, ops) {
+  const me = residues.flatMap((r) => r.atoms);
+  const free = sasa(me);
+  const moved = (m) => me.map((a) => {
+    const [x, y, z] = apply(m, [a.x, a.y, a.z]);
+    return { ...a, x, y, z };
+  });
+  const identity = ops.findIndex((m) => Math.abs(m[0] - 1) + Math.abs(m[5] - 1) + Math.abs(m[10] - 1) + Math.hypot(m[3], m[7], m[11]) < 1e-3);
+  const home = identity >= 0 ? identity : 0;
+  // Which copy is the identity depends on how the operators were made; symChains put it first.
+  const lo = me.reduce((s, a) => [Math.min(s[0], a.x), Math.min(s[1], a.y), Math.min(s[2], a.z)], [1e9, 1e9, 1e9]);
+  const hi = me.reduce((s, a) => [Math.max(s[0], a.x), Math.max(s[1], a.y), Math.max(s[2], a.z)], [-1e9, -1e9, -1e9]);
+  const faces = [];
+  ops.forEach((m, k) => {
+    if (k === home) return;
+    const copy = moved(m);
+    const near = copy.filter((a) => a.x > lo[0] - 8 && a.y > lo[1] - 8 && a.z > lo[2] - 8 && a.x < hi[0] + 8 && a.y < hi[1] + 8 && a.z < hi[2] + 8);
+    if (near.length < 4) return;
+    const bound = sasa(me, { xyz: flatXYZ(near), radii: radiiOf(near) });
+    const lost = Array.from(free, (v, i) => Math.max(0, v - bound[i]));
+    const area = lost.reduce((s, v) => s + v, 0);
+    if (area < 120) return;
+    faces.push({ op: k, area: Math.round(area), nonpolar: Math.round((100 * sumWhere(me, lost)) / area), ...polarContacts(me, near), lost });
+  });
+  return faces.sort((x, y) => y.area - x.area).slice(0, 6);
 }
 
 const out = SPECS.map(build);

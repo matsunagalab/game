@@ -1,25 +1,25 @@
 import { Stage } from './stage.js';
 import { Sound } from './audio.js';
 import { UI, typeset } from './ui.js';
-import { save, persist, PLATES, TIERS, nextPlate, fiveDone } from './save.js';
+import { save, persist, PLATES, TIERS, nextPlate } from './save.js';
 import { Front } from './plates/front.js';
-import { Pluck, Harp, Well } from './plates/bonds.js';
-import { Chord, Step } from './plates/angles.js';
-import { Organ, Exposure } from './plates/dihedrals.js';
-import { Dimer, Drop } from './plates/vdw.js';
-import { Dipole, Liquid } from './plates/charges.js';
-import { MapPlate, Fold, showPaper } from './plates/whole.js';
+import { Organ, Helix } from './plates/dihedrals.js';
+import { Cross, Paint } from './plates/cmap.js';
+import { Esp, Liquid, Salt } from './plates/charges.js';
+import { Argon, Chain, Pair } from './plates/vdw.js';
+import { Sampling, Meta } from './plates/loop.js';
+import { showPaper } from './plates/paper.js';
+import { BENCH } from './bench.js';
 
-const KINDS = { pluck: Pluck, harp: Harp, well: Well, chord: Chord, step: Step, organ: Organ, expose: Exposure, dimer: Dimer, drop: Drop, dipole: Dipole, liquid: Liquid, map: MapPlate, fold: Fold };
-const PARTS = ['Bonds', 'Angles', 'Dihedrals', 'van der Waals', 'Charges', 'Total energy'];
+const KINDS = { organ: Organ, helix: Helix, cross: Cross, paint: Paint, esp: Esp, liquid: Liquid, salt: Salt, argon: Argon, chain: Chain, pair: Pair, sampling: Sampling, meta: Meta };
+const PARTS = ['Dihedrals', 'CMAP', 'Charges', 'vdW', 'Finale'];
 const $ = id => document.getElementById(id);
 
 const TERMS = [
-  { name: 'Bonds', sum: 'bonds', expr: '<i>k</i><sub>b</sub>(<i>r</i> − <i>r</i>₀)²' },
-  { name: 'Angles', sum: 'angles', expr: '<i>k</i><sub>θ</sub>(<i>θ</i> − <i>θ</i>₀)²' },
   { name: 'Dihedrals', sum: 'dihedrals', expr: '½<i>V<sub>n</sub></i>[1 + cos(<i>nφ</i> − <i>γ</i>)]' },
+  { name: 'CMAP', sum: 'residues', expr: 'CMAP(<i>φ</i>, <i>ψ</i>)' },
+  { name: 'Partial charges', sum: 'pairs', expr: '<i>q<sub>i</sub>q<sub>j</sub></i>/4π<i>ε</i>₀<i>r</i>' },
   { name: 'van der Waals', sum: 'pairs', expr: '4<i>ε</i>[(<i>σ</i>/<i>r</i>)¹² − (<i>σ</i>/<i>r</i>)⁶]' },
-  { name: 'Charges', sum: 'pairs', expr: '<i>q<sub>i</sub>q<sub>j</sub></i>/4π<i>ε</i>₀<i>r</i>' },
 ];
 
 class Game {
@@ -44,6 +44,7 @@ class Game {
     $('mute').addEventListener('click', () => this.toggleMute());
     this.showMute();
     $('begin').addEventListener('click', () => { this.sound.unlock(); const n = nextPlate(); n < 0 ? showPaper(this) : this.open(n); });
+    $('bench-open').addEventListener('click', () => this.openBench());
     this.home(true);
     this.last = performance.now();
     requestAnimationFrame(t => this.loop(t));
@@ -55,7 +56,7 @@ class Game {
     const u = document.createElement('button');
     u.className = 'term u';
     u.innerHTML = `<span class="expr"><i>U</i> =</span><span class="name" data-tier="">Total energy</span>`;
-    u.addEventListener('click', () => { this.sound.unlock(); this.openTerm(5); });
+    u.addEventListener('click', () => { this.sound.unlock(); this.openTerm(4); });
     q.append(u);
     this.termButtons = [];
     TERMS.forEach((t, i) => {
@@ -78,14 +79,14 @@ class Game {
       const name = b.querySelector('.name');
       name.dataset.tier = all ? `, ${TIERS[Math.min(...ps.map(p => save.tiers[p.id]))].toLowerCase()}` : done.length ? `, ${done.length} of ${ps.length}` : '';
     });
-    const ok = fiveDone();
-    this.uButton.disabled = !ok;
-    this.uButton.querySelector('.name').textContent = ok ? 'Total energy' : 'Finish all five terms';
+    const tier = save.tiers.meta;
+    this.uButton.classList.toggle('done', !!tier);
+    this.uButton.querySelector('.name').textContent = tier ? `Metastable, ${TIERS[tier].toLowerCase()}` : 'Sampling, then the finale';
     $('begin').textContent = nextPlate() === 0 ? 'Start' : nextPlate() < 0 ? 'Read your paper' : 'Continue';
   }
 
   termsDone() {
-    return [0, 1, 2, 3, 4, 5].filter(t => PLATES.filter(p => p.term === t).every(p => save.tiers[p.id])).length;
+    return [0, 1, 2, 3, 4].filter(t => PLATES.filter(p => p.term === t).every(p => save.tiers[p.id])).length;
   }
 
   openTerm(i) {
@@ -119,6 +120,8 @@ class Game {
     if (this.plate) { this.plate.exit(); this.sound.stopAll(); }
     this.plate = null;
     this.stage.clear();
+    const c = $('panel'), x = c.getContext('2d');
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height);
   }
 
   open(i) {
@@ -130,6 +133,7 @@ class Game {
     const P = KINDS[meta.id];
     this.plate = new P(this, meta);
     this.plate.enter();
+    this.plate.entered = true;
     this.layout();
     this.stage.develop(0);
   }
@@ -141,16 +145,20 @@ class Game {
     const bar = $('bar').getBoundingClientRect(), dock = $('dock').getBoundingClientRect(), n = $('note');
     const side = w > h && h <= 520, wide = w >= 900 && h >= 600;
     const nh = n.getBoundingClientRect().height;
+    let F;
     if (side) {
       n.style.top = 'auto'; n.style.bottom = '8px';
-      this.stage.setInsets({ top: bar.bottom + 2, bottom: nh + 12, left: 0, right: dock.width });
+      F = { top: bar.bottom + 2, bottom: h - nh - 12, left: 0, right: w - dock.width };
     } else if (wide) {
       n.style.top = ''; n.style.bottom = '';
-      this.stage.setInsets({ top: bar.bottom + 4, bottom: h - dock.top + 6, left: Math.min(n.getBoundingClientRect().right + 10, w * 0.34), right: 0 });
+      F = { top: bar.bottom + 4, bottom: dock.top - 6, left: Math.min(n.getBoundingClientRect().right + 10, w * 0.3), right: w };
     } else {
       n.style.top = 'auto'; n.style.bottom = `${h - dock.top + 6}px`;
-      this.stage.setInsets({ top: bar.bottom + 4, bottom: h - dock.top + nh + 12, left: 0, right: 0 });
+      F = { top: bar.bottom + 4, bottom: dock.top - nh - 12, left: 0, right: w };
     }
+    const ins = this.plate?.arrange?.(F);
+    this.stage.setInsets(ins ?? { top: F.top, bottom: h - F.bottom, left: F.left, right: w - F.right });
+    if (this.plate?.entered) this.plate.redraw?.();
   }
 
   // A plate reports its result here. The best verdict is kept.
@@ -171,6 +179,18 @@ class Game {
       onStay: () => {},
       onNext: onNext ?? (() => (last ? showPaper(this) : part ? this.home() : this.open(i + 1))),
     });
+  }
+
+  // Bench notes grow with the plates. Lines appear only for plates already finished.
+  openBench() {
+    const el = $('bench');
+    const open = BENCH.filter(b => save.tiers[b.plate]), closed = BENCH.length - open.length;
+    el.innerHTML = `<article><h2>Bench notes</h2><p>The real force fields behind each plate. Each plate you finish adds to this page.</p>
+      ${open.map(b => `<h3>${b.head}</h3><ul>${b.lines.map(l => `<li>${l}</li>`).join('')}</ul>`).join('')}
+      ${closed ? `<p class="locked">${closed} more ${closed === 1 ? 'section' : 'sections'} to unlock.</p>` : ''}
+      <button id="bench-close">Back to the equation</button></article>`;
+    el.classList.add('open'); el.scrollTop = 0;
+    $('bench-close').onclick = () => el.classList.remove('open');
   }
 
   toggleMute() {
@@ -231,3 +251,5 @@ class Game {
 
 const game = new Game();
 window.__game = game;
+window.__save = save;
+window.__showPaper = () => showPaper(game);

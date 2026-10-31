@@ -2,7 +2,7 @@
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; background: #0d0c13; color: var(--vellum); overscroll-behavior: none; }
 body { font: 400 18px/1.45 'IM Fell English', 'Iowan Old Style', Georgia, serif; user-select: none; -webkit-user-select: none; -webkit-text-size-adjust: 100%; }
-#gl { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+#gl, #stage { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; }
 button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 h1, h2 { font-weight: 400; }
@@ -18,17 +18,19 @@ h1, h2 { font-weight: 400; }
 #title h1 { font-size: clamp(34px, 9.6vw, 60px); line-height: 1.04; color: var(--gold); text-align: center; max-width: 11em; margin: 0 auto; }
 #title .foot { margin: auto auto 0; max-width: 28em; text-align: center; pointer-events: auto; }
 #title p { line-height: 1.5; margin-bottom: 14px; }
+#title button { pointer-events: auto; }
 
 #chapters { position: fixed; inset: 0; pointer-events: none; }
 .bar { display: flex; align-items: center; gap: 2px; padding: calc(var(--top) + 4px) 6px 0; pointer-events: auto; }
 .bar h2 { font-size: 24px; color: var(--gold); }
-#petals { list-style: none; padding: 0; margin: 0; position: absolute; left: 0; right: 0; bottom: 0; top: calc(var(--top) + 60px); pointer-events: auto; background: linear-gradient(transparent, rgba(13, 12, 19, .9) 12%); overflow-y: auto; }
-#petals { display: grid; grid-template-columns: 1fr; align-content: end; gap: 0; padding: 60px 14px calc(var(--bottom) + 14px); max-width: 620px; margin: 0 auto; }
-#petals button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; text-align: left; border-bottom: 1px solid rgba(232, 195, 106, .3); padding: 6px 2px; }
+#petals { list-style: none; padding: 0; margin: 0; position: absolute; left: 0; right: 0; bottom: 0; max-height: calc(100dvh - var(--top) - 60px); pointer-events: auto; background: linear-gradient(transparent, rgba(13, 12, 19, .92) 34px); overflow-y: auto; }
+#petals { display: grid; grid-template-columns: 1fr; align-content: end; gap: 0; padding: 30px 14px calc(var(--bottom) + 8px); max-width: 620px; margin: 0 auto; }
+#petals button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 45px; text-align: left; border-bottom: 1px solid rgba(232, 195, 106, .3); padding: 3px 2px; }
 #petals .n { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 1px solid var(--gold); color: var(--gold); border-radius: 50%; font-size: 18px; }
 #petals .done .n { background: var(--gold); color: #1a1408; }
 #petals .next .n { background: var(--ruby); color: #fff; border-color: var(--ruby); }
-#petals .t { flex: 1; line-height: 1.2; }
+#petals .t { flex: 1; line-height: 1.15; }
+#petals .t small { display: block; font-size: 14px; opacity: .78; }
 #petals .r { color: var(--gold); letter-spacing: .08em; }
 
 #hud { position: fixed; inset: 0; pointer-events: none; }
@@ -38,35 +40,58 @@ h1, h2 { font-weight: 400; }
 #cnum { font-size: 15px; line-height: 1.2; }
 #panel { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(var(--bottom) + 12px); background: var(--stone); border-top: 1px solid var(--gold); pointer-events: auto; }
 #panel > * { max-width: 640px; margin-left: auto; margin-right: auto; }
-#say { min-height: 2.7em; font-size: 17px; line-height: 1.32; }
+#say { height: 2.64em; font-size: 16.5px; line-height: 1.32; overflow: hidden; }
 #meters { display: flex; gap: 16px; margin-top: 6px; }
 #meters > div { flex: 1; min-width: 0; }
-#meters dt { font-size: 14.5px; opacity: .85; }
-#meters dd { margin: 0; font-size: 20px; min-height: 26px; position: relative; }
-#meters i { display: block; height: 10px; margin-top: 8px; width: 0; background: var(--gold); }
-#stress { background: var(--ruby) !important; }
-#tags { position: fixed; inset: 0; pointer-events: none; }
-.tag { position: absolute; transform: translate(-50%, 12px); padding: 0 6px; font-size: 15px; line-height: 1.3; background: rgba(13, 12, 19, .72); color: var(--vellum); white-space: nowrap; }
-.tag b { font-weight: 400; color: var(--gold); margin-left: 4px; }
-.tag.full { background: var(--ruby); color: #fff; }
+#meters dt { font-size: 14px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#meters dd { margin: 0; font-size: 19px; line-height: 24px; min-height: 24px; white-space: nowrap; }
+#meters i { display: block; height: 6px; background: rgba(232, 195, 106, .2); }
+#meters i b { display: block; height: 100%; background: var(--gold); }
 
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 86dvh; overflow-y: auto; background: var(--stone); border-top: 1px solid var(--gold); padding: 18px 20px calc(var(--bottom) + 20px); }
 .sheet > * { max-width: 560px; margin-left: auto; margin-right: auto; }
 .sheet h2 { font-size: 28px; line-height: 1.14; color: var(--gold); }
 #bnum { font-size: 15.5px; }
+#bmol { font-style: italic; color: var(--gold); margin-top: 2px; }
 #blede { margin-top: 10px; line-height: 1.5; }
 #bgoal { margin-top: 10px; line-height: 1.45; font-style: italic; color: var(--gold); }
-#bgo { display: block; margin: 14px 0 0; }
+#bgoals { margin-top: 8px; padding: 0 0 0 1.2em; font-size: 16px; line-height: 1.3; list-style: '❀ '; }
+#bcarry { margin-top: 8px; font-size: 16px; line-height: 1.35; }
+#bgo { display: inline-block; margin: 14px 12px 0 0; }
+#bback { margin-top: 14px; }
 #roses { display: flex; gap: 8px; margin-bottom: 8px; min-height: 40px; }
 #roses i { width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid var(--gold); opacity: .3; }
 #roses i.on { opacity: 1; background: radial-gradient(#fff3c4, var(--gold) 45%, #b4412f 46%, var(--ruby) 66%, var(--gold) 67%); animation: ring .4s cubic-bezier(.2, 1.5, .4, 1) both; }
 @keyframes ring { from { transform: scale(.3); opacity: 0; } }
-#dterm { margin-top: 10px; font-style: italic; color: var(--gold); line-height: 1.4; }
-#dnote { margin-top: 8px; line-height: 1.5; }
+#deffect { margin-top: 8px; line-height: 1.4; }
+#dterm { margin-top: 8px; font-style: italic; color: var(--gold); line-height: 1.4; }
+#dmore { margin-top: 8px; }
+#dmore summary { cursor: pointer; text-decoration: underline; text-underline-offset: 4px; line-height: 1.5; min-height: 32px; }
+#dnote { margin-top: 6px; line-height: 1.45; font-size: 16.5px; }
+#dsrc { margin-top: 6px; line-height: 1.35; font-size: 14.5px; opacity: .8; }
 #done .actions { margin-top: 14px; }
+
+#cellbar { position: fixed; top: calc(var(--top) + 6px); left: 8px; right: 8px; display: flex; gap: 10px; justify-content: center; padding: 4px 8px; background: rgba(13, 12, 19, .78); border-bottom: 1px solid rgba(232, 195, 106, .4); pointer-events: none; }
+#cellbar.under { top: calc(var(--top) + 50px); }
+#cellbar div { min-width: 0; flex: 0 1 25%; line-height: 1.1; }
+#cellbar span { display: block; font-size: 13px; opacity: .8; white-space: nowrap; }
+#cellbar strong { display: block; font-weight: 400; font-size: 16px; color: var(--gold); white-space: nowrap; }
+#cellbar i { display: block; height: 4px; margin-top: 2px; background: rgba(232, 195, 106, .2); }
+#cellbar i b { display: block; height: 100%; background: var(--gold); }
+#dgnum { font-size: 15.5px; }
+#dgwhat { margin-top: 6px; line-height: 1.4; }
+#dgq { margin-top: 8px; font-style: italic; color: var(--gold); line-height: 1.35; }
+#dgopts { display: grid; gap: 6px; margin-top: 8px; }
+.dopt { min-height: 46px; padding: 6px 12px; text-align: left; line-height: 1.2; border: 1px solid rgba(232, 195, 106, .6); background: rgba(232, 195, 106, .08); }
+.dopt.right { background: #1d6f45; border-color: #1d6f45; color: #fff; }
+.dopt.wrong { background: #8d2233; border-color: #8d2233; color: #fff; }
+.dopt:disabled { cursor: default; }
+#dgwhy { margin-top: 8px; line-height: 1.4; }
+#drug .actions { margin-top: 10px; }
 
 @media (min-width: 900px) and (min-aspect-ratio: 1/1) {
   #panel, .sheet { left: auto; right: 22px; bottom: 22px; width: 400px; border: 1px solid var(--gold); }
+  #cellbar { left: auto; right: 22px; width: 400px; }
   #title h1 { max-width: 16em; }
   #petals { max-width: 420px; margin: 0 22px 0 auto; }
 }
@@ -76,4 +101,5 @@ h1, h2 { font-weight: 400; }
   #title p { display: none; }
   #say { font-size: 15px; min-height: 0; }
 }
+@media (max-width: 360px) { #say { font-size: 15px; } #meters dd { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
