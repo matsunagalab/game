@@ -9,6 +9,7 @@ Catalog: https://www.bio.ics.saitama-u.ac.jp/game/
 | Amino-acids learner | `amino-acids-learner/` | `sh tools/build.sh` |
 | Protein Structure Learner | `protein-structure-learner/` | `node tools/build.mjs` |
 | Physical chemistry of biomolecules learner | `physical-chemistry-of-biomolecules-learner/` | `node tools/build.mjs` |
+| Mechanisms of catalytic reactions by biomolecules learner | `mechanisms-of-catalytic-reactions-by-biomolecules-learner/` | `node tools/build.mjs` |
 | Molecular biology of the cell learner | `molecular-biology-of-the-cell-learner/` | `node tools/build.mjs` |
 | Force-Field Parameters of Biomolecular Simulation Learner | `force-field-parameters-learner/` | `npm install && npm run build` |
 | Metalloprotein Learner | `metalloprotein-learner/` | `sh tools/build.sh` |

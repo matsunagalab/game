@@ -27,6 +27,8 @@ All fonts are licensed under the SIL Open Font License 1.1. See [LICENSES/OFL-1.
 | Shippori Mincho | 2021 The Shippori Mincho Project Authors | Physical chemistry of biomolecules learner |
 | Zen Kaku Gothic New | 2022 The Zen Project Authors | Physical chemistry of biomolecules learner |
 | IM Fell English | 2010 Igino Marini | Molecular biology of the cell learner |
+| Cormorant Upright | 2015 The Cormorant Project Authors | Mechanisms of catalytic reactions by biomolecules learner |
+| Alegreya Sans | 2013 The Alegreya Sans Project Authors | Mechanisms of catalytic reactions by biomolecules learner |
 
 ## Structures
 
