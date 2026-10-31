@@ -1,5 +1,9 @@
 // All sound is synthesised, so the game stays one small file.
+import { BEAT, piece } from './music.js';
+import { Player } from './player.js';
+
 const PENTA = [0, 3, 5, 7, 10];
+const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 
 export class Sound {
   constructor() {
@@ -44,10 +48,38 @@ export class Sound {
     this.noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const nd = this.noiseBuffer.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    this.player = new Player(ctx, BEAT, piece, (n, t) => this.band(n, t));
+    this.player.muted = this.muted;
+    this.player.hold(!!this.quietBand);
+  }
+
+  // The Beat chapter makes its own music, so the band sits out.
+  holdBand(on) {
+    this.quietBand = on;
+    this.player?.hold(on);
+  }
+
+  band(n, t) {
+    const f = n.midi ? hz(n.midi) : 0;
+    const length = n.beats * BEAT;
+    if (n.kind === 'vibes') {
+      this.voice(f, t, { gain: 0.085, dur: 1.5, wet: 0.7 });
+      this.voice(f * 4, t, { gain: 0.016, dur: 0.22, wet: 0.3 });
+    } else if (n.kind === 'keys') {
+      this.voice(f, t, { type: 'triangle', gain: 0.024, dur: 0.42, attack: 0.008, wet: 0.5, filter: 1500 });
+    } else if (n.kind === 'bass') {
+      this.voice(f, t, { type: 'triangle', gain: n.soft ? 0.09 : 0.15, dur: Math.max(0.3, length), attack: 0.012, wet: 0.08, filter: 620 });
+      this.voice(f * 2, t, { gain: 0.03, dur: 0.12, wet: 0 });
+    } else if (n.kind === 'rim') {
+      this.burst(t, { dur: 0.03, gain: 0.05, freq: 2200, q: 7, wet: 0.12 });
+    } else if (n.kind === 'shaker') {
+      this.burst(t, { dur: 0.05, gain: n.soft ? 0.008 : 0.016, freq: 6500, q: 1, type: 'highpass', wet: 0 });
+    }
   }
 
   setMuted(m) {
     this.muted = m;
+    if (this.player) this.player.muted = m;
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.85, this.ctx.currentTime, 0.02);
   }
 

@@ -78,6 +78,10 @@ node tools/build.mjs
 
 There is no `node_modules` folder. three.js is included in `vendor/three/`.
 
+## Music
+
+A small bossa for vibraphone, keys, double bass and rim click in `src/music.js`, in C major around D, so the game's D minor pentatonic chimes always fit over it. The band sits out during the Beat chapter, which makes its own music.
+
 ## Folders
 
 - `src/press.js`: the three-ink print engine, which every screen goes through

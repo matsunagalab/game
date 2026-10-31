@@ -65,6 +65,10 @@ After each chapter you choose what a real drug will do, then watch it in the win
 
 At the end of the day ADAM17 cuts TGF-α from the surface, it lands on EGFR on this cell and its neighbours, and Ras switches on again.
 
+## Music
+
+A slow dance for harp and recorder in D Dorian, 3/4, in `src/logic/music.js`, chosen to match the stained glass. It is written out with rests, and no note lasts more than two beats.
+
 ## Model limits
 
 These are teaching models, and each chapter says where it departs from life.

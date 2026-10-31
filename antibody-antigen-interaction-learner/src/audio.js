@@ -1,5 +1,9 @@
 // All sound is synthesised, so the game works offline with no audio files.
+import {BEAT, piece} from './music.js';
+import {Player} from './player.js';
+
 const SCALE = [0, 2, 4, 7, 9];
+const hz = midi => 440 * 2 ** ((midi - 69) / 12);
 
 export class Sound {
   constructor() { this.muted = false; this.ctx = null; }
@@ -24,10 +28,62 @@ export class Sound {
     this.wet = ctx.createGain();
     this.wet.gain.value = 0.3;
     this.wet.connect(reverb).connect(this.master);
+    this.grit = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const grit = this.grit.getChannelData(0);
+    for (let i = 0; i < grit.length; i++) grit[i] = Math.random() * 2 - 1;
+    this.music = ctx.createGain();
+    this.music.connect(this.master);
+    const room = ctx.createGain();
+    room.gain.value = 0.25;
+    this.music.connect(room).connect(this.wet);
+    this.player = new Player(ctx, BEAT, piece, (n, t) => this.band(n, t));
+    this.player.muted = this.muted;
+  }
+
+  // A metal tine: a clear tone with a quick bright buzz at the start.
+  tine(f, t, level, ring) {
+    const ctx = this.ctx;
+    for (const [r, l, d] of [[1, 1, 1], [3.01, 0.22, 0.2], [6.2, 0.09, 0.07]]) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = f * r;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(level * l, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0003, t + ring * d);
+      o.connect(g).connect(this.music);
+      o.start(t);
+      o.stop(t + ring * d + 0.02);
+    }
+  }
+
+  band(n, t) {
+    const {ctx} = this;
+    if (n.kind === 'lead') return this.tine(hz(n.midi), t, 0.085, 1.1);
+    if (n.kind === 'tine') return this.tine(hz(n.midi), t, n.low ? 0.07 : 0.042, n.low ? 1 : 0.7);
+    const src = ctx.createBufferSource();
+    src.buffer = this.grit;
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    if (n.kind === 'bell') {
+      f.type = 'bandpass';
+      f.frequency.value = 1700;
+      f.Q.value = 9;
+      g.gain.setValueAtTime(0.1, t);
+      g.gain.exponentialRampToValueAtTime(0.0003, t + 0.06);
+    } else {
+      f.type = 'highpass';
+      f.frequency.value = 6000;
+      g.gain.setValueAtTime(n.soft ? 0.007 : 0.016, t);
+      g.gain.exponentialRampToValueAtTime(0.0003, t + 0.05);
+    }
+    src.connect(f).connect(g).connect(this.music);
+    src.start(t, Math.random() * 0.8);
+    src.stop(t + 0.08);
   }
 
   setMuted(muted) {
     this.muted = muted;
+    if (this.player) this.player.muted = muted;
     if (this.master) this.master.gain.setTargetAtTime(muted ? 0 : 0.8, this.ctx.currentTime, 0.05);
   }
 

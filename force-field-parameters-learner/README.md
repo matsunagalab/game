@@ -53,6 +53,10 @@ Over 8 seeds of the plate's own steps, populations alone passed the sealed tests
 
 Limits: all targets come from one hidden parameter set. Lattice moves are not real dynamics, so dwell shows that barriers exist, not how long they last. Melting uses fixed energies with kT scaled, so it ignores temperature dependence of the water terms. Salt and denaturant are one-line stand-ins. Populations are exact for this model and are not predictions for any real protein. Even the sealed tests do not fix every parameter: a third rival set passes them all, and the tests record this. The real anchor for scale is T4 lysozyme L99A, whose excited state is 3% populated, 2.0 kcal/mol above the ground state (about 3.5 kT) with a lifetime near 1 ms (Mulder et al. 2001; Bouvignies et al. 2011).
 
+## Music
+
+A chaconne for harpsichord in `src/music.js`: a four-bar ground in C sharp minor under a canon. Each finished term of the energy brings in one more voice, up to four. The key is C sharp minor because the game's molecular pitches (wavenumber × 0.25 Hz) sit close to it. Nothing is held: every note is plucked and dies away, and the piece stops before it comes round. Droplets patter in separate tiny drops.
+
 ## Build
 
 Dependencies stay outside the project:

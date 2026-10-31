@@ -10,6 +10,7 @@ import * as M from '../src/logic/membrane.js';
 import * as K from '../src/logic/kinesin.js';
 import * as D from '../src/logic/mitosis.js';
 import * as L from '../src/logic/cell.js';
+import * as B from '../src/logic/music.js';
 
 let n = 0;
 const t = (name, fn) => { fn(); n += 1; console.log('ok', name); };
@@ -188,5 +189,24 @@ t('the real splice donor is the best U1 match in the window shown', () => {
   const rna = C.toRNA(S.CCND1_DONOR.exon + S.CCND1_DONOR.intron);
   const best = S.u1Scores(rna);
   assert.equal(best.indexOf(Math.max(...best)), S.CCND1_DONOR.exon.length - 3);
+});
+t('the music is a written piece with rests, not a held sound', () => {
+  for (const part of [B.VERSE, B.ANSWER]) {
+    part.tune.forEach((bar, i) => {
+      assert.equal(bar.reduce((s, [, b]) => s + b, 0), B.BAR, `bar ${i} adds up to three beats`);
+      const [first] = bar[0];
+      const tones = B.CHORDS[part.chords[i]].map((m) => m % 12);
+      assert.ok(tones.includes(first % 12), `bar ${i} starts on a chord tone`);
+    });
+  }
+  for (const pass of [0, 1]) {
+    const { notes, beats } = B.piece(pass);
+    assert.ok(notes.every((x) => B.SCALE.includes(x.midi % 12)), 'every note is in the mode');
+    assert.ok(notes.every((x) => x.beats <= 2), 'no note is held longer than two beats');
+    const last = Math.max(...notes.map((x) => x.beat + x.beats));
+    assert.ok(beats - last >= 2 * B.BAR - 1, 'the piece stops before it comes round');
+    const tune = notes.filter((x) => x.voice === 'recorder' || x.voice === 'high').sort((a, b) => a.beat - b.beat);
+    assert.ok(tune.some((x, i) => i && x.beat - (tune[i - 1].beat + tune[i - 1].beats) >= 1), 'the tune breathes');
+  }
 });
 console.log(`${n} tests passed`);

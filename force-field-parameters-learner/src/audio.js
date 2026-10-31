@@ -1,9 +1,16 @@
 // All sound is synthesised. Every pitch from a molecule is its real wavenumber × 0.25 Hz,
 // which keeps frequency ratios exact and puts a C–H stretch at 734 Hz: 37 octaves below the real 88 THz.
+import { BEAT, piece } from './music.js';
+import { Player } from './player.js';
+
 export const CM_TO_HZ = 0.25;
 
+// One bright waveform for the harpsichord: the jack plucks near the end of the string, so high partials stay strong.
+const REAL = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const IMAG = [0, 1, 0.72, 0.56, 0.62, 0.38, 0.33, 0.22, 0.27, 0.14, 0.12, 0.08, 0.06];
+
 export class Sound {
-  constructor() { this.ctx = null; this.muted = false; this.voices = []; this.bass = 0; }
+  constructor() { this.ctx = null; this.muted = false; this.terms = 0; }
 
   unlock() {
     if (this.ctx) { this.ctx.resume(); return; }
@@ -24,9 +31,13 @@ export class Sound {
     this.wet.connect(rev);
     const rg = ctx.createGain(); rg.gain.value = 0.55;
     rev.connect(rg); rg.connect(this.master);
-    this.hum = ctx.createGain(); this.hum.gain.value = 0.0;
-    this.hum.connect(this.dry); this.hum.connect(this.wet);
-    this.startDrone();
+    this.quill = ctx.createPeriodicWave(new Float32Array(REAL), new Float32Array(IMAG));
+    this.music = ctx.createGain(); this.music.gain.value = 1.5;
+    this.music.connect(this.dry);
+    const room = ctx.createGain(); room.gain.value = 0.16;
+    this.music.connect(room); room.connect(this.wet);
+    this.player = new Player(ctx, BEAT, pass => piece(pass, 1 + this.terms), (n, t) => this.harpsichord(n, t));
+    this.player.muted = this.muted;
   }
 
   impulse(sec, decay) {
@@ -38,37 +49,27 @@ export class Sound {
     return b;
   }
 
-  setMuted(m) { this.muted = m; if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05); }
+  setMuted(m) { this.muted = m; if (this.player) this.player.muted = m; if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05); }
   get now() { return this.ctx?.currentTime ?? 0; }
 
-  // A very quiet bed built from the C–C stretch (1104 cm⁻¹) and its neighbours. Tuned chapters add voices.
-  startDrone() {
-    const ctx = this.ctx;
-    this.droneGain = ctx.createGain(); this.droneGain.gain.value = 0.05;
-    const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 900;
-    this.droneGain.connect(filter); filter.connect(this.wet); filter.connect(this.dry);
-    this.addVoice(1104 * CM_TO_HZ / 2, 0.8);
-    this.addVoice(1104 * CM_TO_HZ / 4, 1);
+  // One plucked note of the chaconne. It dies away on its own, faster in the treble, as a real string does.
+  harpsichord(n, t) {
+    const ctx = this.ctx, f = 440 * 2 ** ((n.midi - 69) / 12), ring = n.voice === 'ground' ? 1.7 : 1.2;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.setPeriodicWave(this.quill); o.frequency.value = f;
+    const level = (n.voice === 'ground' ? 0.13 : 0.1) * (1 - Math.max(0, n.midi - 72) * 0.012);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(level * 0.3, t + 0.14);
+    g.gain.exponentialRampToValueAtTime(0.0003, t + ring);
+    o.connect(g);
+    const pan = ctx.createStereoPanner?.();
+    if (pan) { pan.pan.value = n.pan ?? 0; g.connect(pan); pan.connect(this.music); } else g.connect(this.music);
+    o.start(t); o.stop(t + ring + 0.02);
   }
 
-  // One more voice for each finished term, so the music grows with the force field.
-  setProgress(n) {
-    if (!this.ctx) return;
-    const parts = [734 / 2, 399 / 2, 165, 552 / 2, 464];
-    while ((this.grown ?? 0) < Math.min(n, parts.length)) { this.addVoice(parts[this.grown ?? 0], 0.42); this.grown = (this.grown ?? 0) + 1; }
-  }
-
-  addVoice(hz, gain = 0.5) {
-    if (!this.ctx) return;
-    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
-    o.type = 'triangle'; o.frequency.value = hz; g.gain.value = 0;
-    lfo.frequency.value = 0.05 + Math.random() * 0.08; lg.gain.value = gain * 0.35;
-    lfo.connect(lg); lg.connect(g.gain);
-    g.gain.setTargetAtTime(gain * 0.65, ctx.currentTime, 2.5);
-    o.connect(g); g.connect(this.droneGain);
-    o.start(); lfo.start();
-    this.voices.push(hz);
-  }
+  // One more voice of the canon for each finished term.
+  setProgress(n) { this.terms = n; }
 
   // A struck glass bar: the fundamental plus the two inharmonic partials of a free bar.
   pluck(hz, amp = 0.5, dur = 2.4) {
@@ -85,35 +86,7 @@ export class Sound {
     }
   }
 
-  // Two steady tones. When they are close you hear the beating slow down, exactly as when tuning a string.
-  startBeat(refHz, myHz) {
-    if (!this.ctx || this.beat) return;
-    const ctx = this.ctx;
-    const mk = hz => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = 'sine'; o.frequency.value = hz; g.gain.value = 0.11;
-      o.connect(g); g.connect(this.hum); o.start();
-      return o;
-    };
-    this.beat = { ref: mk(refHz), my: mk(myHz) };
-    this.hum.gain.setTargetAtTime(1, ctx.currentTime, 0.15);
-  }
-  setBeat(refHz, myHz) {
-    if (!this.beat) return;
-    this.beat.ref.frequency.value = refHz;
-    this.beat.my.frequency.setTargetAtTime(myHz, this.ctx.currentTime, 0.02);
-    this.hum.gain.setTargetAtTime(1, this.ctx.currentTime, 0.15);
-    this.beatIdle = 0;
-  }
-  quietBeat(level = 0.12) { if (this.beat) this.hum.gain.setTargetAtTime(level, this.ctx.currentTime, 0.7); }
-  stopBeat() {
-    if (!this.beat) return;
-    const b = this.beat; this.beat = null;
-    this.hum.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
-    setTimeout(() => { b.ref.stop(); b.my.stop(); }, 500);
-  }
-
-  // Chord of up to three sustained tones, for water.
+  // Three bars struck in turn, for water.
   chord(hzs, amp = 0.16, dur = 1.6) {
     if (!this.ctx) return;
     hzs.forEach((h, i) => setTimeout(() => this.pluck(h, amp + 0.1, dur + 1), i * 70));
@@ -195,22 +168,20 @@ export class Sound {
     this.noise(0.9, 0.5, 3500);
   }
 
-  // Shimmer that follows how much is happening in a droplet.
-  startWash() {
-    if (!this.ctx || this.washNode) return;
-    const ctx = this.ctx, n = ctx.sampleRate * 2, b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-    s.buffer = b; s.loop = true; f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.8; g.gain.value = 0;
-    s.connect(f); f.connect(g); g.connect(this.wet); s.start();
-    this.washNode = { s, f, g };
-  }
+  // Droplets patter: tiny separate drops, thicker when the liquid is restless. Never a steady hiss.
+  startWash() { this.rain = { level: 0, hz: 2000, next: 0 }; }
   setWash(level, hz) {
-    if (!this.washNode) return;
-    this.washNode.g.gain.setTargetAtTime(level * 0.05, this.ctx.currentTime, 0.2);
-    this.washNode.f.frequency.setTargetAtTime(hz, this.ctx.currentTime, 0.3);
+    const r = this.rain;
+    if (!r || !this.ctx || this.ctx.state !== 'running') return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (t < r.next) return;
+    r.next = t + (0.12 + Math.random() * 0.5) / Math.max(0.3, level);
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = hz * (0.7 + Math.random() * 0.7);
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.04);
+    g.gain.setValueAtTime(0.012 + Math.random() * 0.012, t); g.gain.exponentialRampToValueAtTime(0.0002, t + 0.05);
+    o.connect(g); g.connect(this.dry); g.connect(this.wet); o.start(t); o.stop(t + 0.06);
   }
-  stopWash() { if (this.washNode) { const w = this.washNode; this.washNode = null; w.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1); setTimeout(() => w.s.stop(), 400); } }
+  stopWash() { this.rain = null; }
 
-  stopAll() { this.stopBeat(); this.stopOrgan(); this.stopWash(); }
+  stopAll() { this.stopOrgan(); this.stopWash(); }
 }

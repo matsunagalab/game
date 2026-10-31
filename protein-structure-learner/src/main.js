@@ -114,6 +114,7 @@ function turnPage(change) {
 }
 
 const clearStage = () => {
+  sound.holdBand(false);
   ctx.cancelFinish?.();
   current?.dispose?.();
   current = null;
@@ -344,6 +345,7 @@ function startStage(id) {
     clearTimeout(finishTimer);
   };
   const start = { chain: startChain, bond: startBond, beat: startBeat, core: startCore, shell: startShell }[stage.chapter];
+  sound.holdBand(stage.chapter === 'beat');
   current = start(ctx, stage);
 }
 
