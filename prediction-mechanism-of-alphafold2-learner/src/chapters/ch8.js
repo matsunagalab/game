@@ -100,7 +100,7 @@ async function pipeline(run) {
   sound.phrase(5);
   run.reach(1);
   ui.reads([{ value: `${fmt(r)} Å`, label: tr('RMSD from the real CheY', '本物のCheYからのRMSD') }, { value: fmt(l), label: 'lDDT' }, { value: tr(`${hits} of ${first.length}`, `${first.length}組中${hits}組`), label: tr('contacts used were real', '使った接触のうち本物') }]);
-  await run.line(tr('From real sequences to a fold, in seconds, with no learned weights, though with local shape read from the crystal. Some of those contacts are still false.', '局所の形は結晶構造から読んでいるものの、学習した重みなしで、本物の配列から数秒で立体構造にたどり着いた。接触の一部はまだ偽物である。'));
+  await run.line(tr('From real sequences to a fold, in seconds, with no learned weights, though with local shape read from the crystal. Some of those contacts are still false.', '局所の形は結晶構造から読んでいるものの、学習した重みなしで、本物の配列から数秒でfoldにたどり着いた。接触の一部はまだ偽物である。'));
 }
 
 async function again(run) {

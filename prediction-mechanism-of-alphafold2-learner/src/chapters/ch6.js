@@ -11,9 +11,9 @@ const LIFT = 22;
 
 export default {
   id: 'ipa',
-  title: tr('Invariant point attention', '不変点アテンション'),
+  title: tr('Invariant point attention', 'IPA'),
   tease: tr('Aim attention with a point in space, then turn the whole molecule and see the numbers refuse to change.', '空間の点でアテンションの向きを決める。分子全体を回しても数値が変わらないことを確かめる。'),
-  principle: tr('A rotated protein is the same protein, and invariant point attention is built to give the same answer in any orientation. Its attention reads the molecule\'s geometry only through distances between points placed in each residue\'s own frame, and those survive any rotation, so the update turns with the molecule. DeepMind found this helpful but not essential.', '回転したタンパク質も同じタンパク質であり、不変点アテンション（invariant point attention、IPA）はどの向きでも同じ答えを出すようにつくられている。そのアテンションは、各残基のフレームに置いた点どうしの距離を通してだけ分子の幾何を読む。距離はどんな回転でも変わらないので、更新は分子といっしょに回る。DeepMindは、これは役に立つが不可欠ではないと結論した。'),
+  principle: tr('A rotated protein is the same protein, and invariant point attention is built to give the same answer in any orientation. Its attention reads the molecule\'s geometry only through distances between points placed in each residue\'s own frame, and those survive any rotation, so the update turns with the molecule. DeepMind found this helpful but not essential.', '回転したタンパク質も同じタンパク質であり、invariant point attention（IPA）はどの向きでも同じ答えを出すようにつくられている。そのアテンションは、各残基のフレームに置いた点どうしの距離を通してだけ分子の幾何を読む。距離はどんな回転でも変わらないので、更新は分子といっしょに回る。DeepMindは、これは役に立つが不可欠ではないと結論した。'),
   goals: [tr('Aim attention at three residues.', '3つの残基にアテンションを向ける。'), tr('Say correctly what survives a turn.', '回転で変わらないものを正しく答える。'), tr('Get the new case right first time, answer and reason.', '新しい例で、答えと理由の両方を1回で正解する。')],
   note: tr(`<h3>Chapter note</h3>
     <p><b>The formula here</b> is Algorithm 22, line 7: a<sub>ij</sub> = softmax<sub>j</sub>( w<sub>L</sub>( b<sub>ij</sub> − (γ w<sub>C</sub>/2) Σ<sub>p</sub> |T<sub>i</sub>∘q<sub>ip</sub> − T<sub>j</sub>∘k<sub>jp</sub>|² ) ), with w<sub>C</sub> = √(2/(9N<sub>q</sub>)), w<sub>L</sub> = √(1/3), and points in nanometres. The scalar query-key term is left out.</p>
@@ -110,7 +110,7 @@ async function aim(run) {
   });
   run.reach(1);
   ui.tags('paper');
-  await run.line(tr('You aimed attention through space. In AlphaFold2 the network itself places these points, many at once, and adds them to the attention you met in chapter 3. This is <b>invariant point attention</b>, or IPA.', '空間を通してアテンションの向きを決めた。AlphaFold2では、ネットワーク自身がこの点を一度に多数置き、第3章のアテンションに加える。これが<b>不変点アテンション</b>（invariant point attention、IPA）である。'));
+  await run.line(tr('You aimed attention through space. In AlphaFold2 the network itself places these points, many at once, and adds them to the attention you met in chapter 3. This is <b>invariant point attention</b>, or IPA.', '空間を通してアテンションの向きを決めた。AlphaFold2では、ネットワーク自身がこの点を一度に多数置き、第3章のアテンションに加える。これが<b>IPA</b>（invariant point attention）である。'));
   run.state.q = q;
   run.state.i = i;
 }

@@ -12,7 +12,7 @@ const LIFT = 24;
 export default {
   id: 'gas',
   title: tr('Residue gas', '残基ガス'),
-  tease: tr('Every residue is a free paper triangle. Throw them all in the air, from one point, and watch a fold appear.', 'どの残基も自由に動く紙の三角形である。1点からすべてを宙に投げると、立体構造が現れる。'),
+  tease: tr('Every residue is a free paper triangle. Throw them all in the air, from one point, and watch a fold appear.', 'どの残基も自由に動く紙の三角形である。1点からすべてを宙に投げると、foldが現れる。'),
   principle: tr('Each residue is treated as a rigid triangle with a position and a rotation, called a frame. The frames float free, with no chain holding them, so any residue can be corrected without swinging the rest of the protein.', '各残基は、位置と回転を持つ剛体の三角形として扱う。これをフレームと呼ぶ。フレームは鎖につながれず自由に浮かんでいるので、タンパク質の他の部分を振り回さずに、どの残基でも修正できる。'),
   goals: [tr('Run the eight blocks.', '8ブロックを実行する。'), tr('Run them again with short reach.', '届く範囲を短くして、もう一度実行する。'), tr('Get the new case right first time, answer and reason.', '新しい例で、答えと理由の両方を1回で正解する。')],
   note: tr(`<h3>Chapter note</h3>
@@ -25,7 +25,7 @@ export default {
     <p class="small">Sources: Jumper et al., Nature 2021, main text and Supplement 1.8, 1.9.11, Algorithms 20, 21, 23.</p>`, `<h3>この章の注</h3>
     <p><b>フレーム</b>はT = (R, t)で、局所座標を全体の座標に移す。x<sub>global</sub> = R x<sub>local</sub> + tである。Algorithm 21でつくる。tはCαの位置で、第1軸はCαからCへ向かい、Nは第1軸と第2軸の平面内にあり、第3軸はこの2軸のベクトル積である。合成は(R<sub>1</sub>R<sub>2</sub>, R<sub>1</sub>t<sub>2</sub> + t<sub>1</sub>)である。</p>
     <p><b>シングル表現。</b>Algorithm 6の12行目で、MSA表現の最初の行を線形射影して、256から384チャネルにしてつくる。最初の行そのものではない。</p>
-    <p><b>AlphaFold2では。</b>Structure Moduleは重みを共有する8層からなり、すべてのフレームは恒等変換から始まる。これが「ブラックホール」の出発点である（Supplement 1.8）。各層は不変点アテンション（IPA）を実行したあと、T<sub>i</sub> ← T<sub>i</sub> ∘ ΔT<sub>i</sub>と更新する。ΔTはシングル表現から、単位長でない四元数と並進として読み取る（Algorithm 23）。訓練中は層の間で回転の勾配を止める。側鎖はねじれ角と理想的な幾何から、別の段階としてつくる。</p>
+    <p><b>AlphaFold2では。</b>Structure Moduleは重みを共有する8層からなり、すべてのフレームは恒等変換から始まる。これが「ブラックホール」の出発点である（Supplement 1.8）。各層はIPA（IPA）を実行したあと、T<sub>i</sub> ← T<sub>i</sub> ∘ ΔT<sub>i</sub>と更新する。ΔTはシングル表現から、単位長でない四元数と並進として読み取る（Algorithm 23）。訓練中は層の間で回転の勾配を止める。側鎖はねじれ角と理想的な幾何から、別の段階としてつくる。</p>
     <p><b>鎖。</b>ペプチド結合の幾何は課していない。ネットワークはモジュールの途中でしばしばこれを壊すが、論文によると、これにより「複雑なループ閉鎖の問題を解かずに（without solving complex loop closure problems）」局所を精密化できる。訓練の最初から、FAPEでは隣どうしが互いに正しい位置に来ると損失が下がる。悪い結合に対するviolation損失（重み1.0）はファインチューニングでだけ加わる。早い段階で入れると訓練が不安定になり、精度がわずかに下がったからである（Supplement 1.9, 1.9.11）。厳密な幾何が得られるのは予測後のAmberによる緩和だけで、これはGDTやlDDT-Cαで測る精度を改善しない。</p>
     <p><b>このゲームの更新は代役である。</b>ここではペアの表が、3CHYから取った各ペアの本当の相対姿勢を持っている。AlphaFold2にはこれがない。各ブロックで、すべての残基が他のすべての残基から自分の居場所を聞き、その提案を平均して42%だけ動き、その動きを自分のフレームで合成する。最初のブロックだけは回転をすべて、並進を30%行う。この規則が本物と一致するのは外見だけ、つまりフレーム、合成、8ブロックの点だけである。本物のモジュールの技術はすべて省いている。すべての残基がほぼすべての残基の声を聞く必要があるのは、この小さなモデルの性質である。「no IPA」アブレーションは、このモジュールにアテンションも反復もまったくないが、失ったものはごくわずかだった（Supplement 1.13.1, 1.13.3）。</p>
     <p><b>形は本物、大きさは拡大。</b>三角形は本物のN-Cα-Cの形のままで、見えるように実物より大きく描いている。</p>
@@ -247,7 +247,7 @@ async function hole(run) {
   sound.good(2);
   const last = res[res.length - 1];
   ui.tags('model', 'game');
-  await run.line(tr(`The loss fell from ${fmt(res[0].f)} to ${fmt(last.f)}, and the real gap across a peptide bond is 1.33 Å. The gas reached the fold it was told about.`, `損失は${fmt(res[0].f)}から${fmt(last.f)}に下がり、本物のペプチド結合の間隔は1.33 Åである。ガスは教えられた立体構造にたどり着いた。`));
+  await run.line(tr(`The loss fell from ${fmt(res[0].f)} to ${fmt(last.f)}, and the real gap across a peptide bond is 1.33 Å. The gas reached the fold it was told about.`, `損失は${fmt(res[0].f)}から${fmt(last.f)}に下がり、本物のペプチド結合の間隔は1.33 Åである。ガスは教えられたfoldにたどり着いた。`));
   await run.line(tr('This shows that eight rounds of moves can assemble free frames. It does not show how to find them: AlphaFold2 has to work that out, with weights it learned.', 'これが示すのは、8回の動きで自由なフレームを組み立てられることである。動きの見つけ方は示しておらず、それはAlphaFold2が学習した重みで解かなければならない。'));
 }
 
