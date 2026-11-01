@@ -111,8 +111,18 @@ export class Aligned {
     return { m: at, rmsd: Math.sqrt(lo / n) };
   }
 
-  // All atoms of a point: the part in the span, plus noise s outside it. xi holds one normal number per coordinate, and part of it falls in the
-  // span. That part is removed, so that the noise really lies outside.
+  // Takes the part in the span out of normal numbers, so that the noise of expand lies only outside it. Without this, that part would count twice.
+  outside(xi, at = 0) {
+    const { B, P, dim } = this;
+    for (let p = 0; p < P; p += 1) {
+      const b = B[p];
+      let v = 0;
+      for (let i = 0; i < dim; i += 1) v += b[i] * xi[at + i];
+      for (let i = 0; i < dim; i += 1) xi[at + i] -= v * b[i];
+    }
+  }
+
+  // All atoms of a point: the part in the span, plus noise s outside it. xi holds one number per coordinate, cleaned by outside.
   expand(c, s, xi, out, at = 0, ci = 0) {
     const { B, P, dim, mean } = this;
     for (let i = 0; i < dim; i += 1) out[at + i] = mean[i] + s * xi[i];

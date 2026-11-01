@@ -1,6 +1,13 @@
 // Small measures used to score what the player makes.
 export const mean = (a) => { let s = 0; for (const v of a) s += v; return s / a.length; };
 
+// How many items are really in play: the exponential of the entropy of their shares. All M equally often gives M, and one alone gives 1.
+export function evenCount(shares) {
+  let H = 0;
+  for (const v of shares) if (v > 0) H -= v * Math.log(v);
+  return Math.exp(H);
+}
+
 // The map is phi -180 to 180, psi -100 to 260.
 export const MAP = { x0: -180, x1: 180, y0: -100, y1: 260 };
 

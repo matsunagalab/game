@@ -17,7 +17,7 @@ const { smax: SMAX, smin: SMIN, steps: STEPS, seed: SEED, lambda: LAMBDA, gammaM
 const { width: WIDTH, share: SHARE, tol: TOL, preview: PREVIEW, drops: DROPS2, shown: SHOWN, odds: ODDS, shares: SHARES, start: START } = TWO;
 const INK = '29, 33, 65', TEAL = '#0d8a8f', MAG = '#c2185b', ULTRA = '#2336a8', PLUM = '#6a2c91', SOFT = '#565c7c';
 const REGIONS = ['α-like', 'strand', 'φ > 0'];
-const GOALS = ['Drag the dot until open matches the truth.', 'Dot to ring, then drag the rare bar to your guess.', 'Drag the dot to where open lands.'];
+const GOALS = ['Drag the dot to the set share.', 'Dot to ring, then guess with the bar.', 'Drag the dot to where open lands.'];
 const CLOSED_INK = PIGMENT.ultra, OPEN_INK = PIGMENT.teal;
 
 export default {
@@ -25,27 +25,30 @@ export default {
   puzzle: true,
   place: [2, 3],
   title: 'Is it the Boltzmann distribution?',
-  tease: 'Run a sampler where the true share is known, and watch what its two knobs do to a rare state.',
-  principle: 'On a perfect field you matched the truth, then two sampler knobs alone shrank a rare state. Sample frequencies are not populations unless checked.',
-  caveat: 'Exact toy fields: nothing direct about Boltz on any protein.',
+  tease: 'Run a sampler on a share the game sets, and watch what its two knobs do to a rare state.',
+  principle: 'You matched a set share, then two sampler knobs alone shrank a rare state. Sample frequencies are not populations unless checked.',
+  caveat: 'Toy fields: nothing direct about Boltz.',
   goals: GOALS,
   get note() {
     const m = mdRun(), K = adk(), B = boltzRun(), base = B.finals['seed 42'], far = ['seed 43', 'second sample', 'step scale 1.0', '40 steps'].map((k) => `${fmt(fitRmsd(B.finals[k], base), 1)} Å for ${k}`).join(', ');
     return `<h3>Chapter note</h3>
     <p><b>Your moves and the real thing.</b> The dot sets two real numbers of the sampler, Algorithm 18 of AlphaFold3, which Boltz also uses. η, the step scale, stretches each step. γ₀ sets how much fresh noise comes before each step. They are different knobs, and Boltz-2's preset changes both, together with the noise scale λ, which stays at ${LAMBDA} here.</p>
-    <p><b>Why two kinds of board.</b> No true Boltzmann reference exists here for a protein, so none is faked. Levels 1 and 3 use a teaching model with a known answer: two real structures of adenylate kinase, closed (1AKE chain A) and open (4AKE chain A), 214 C-alpha atoms, as a mixture of two Gaussians of width ${WIDTH} Å with a share we set. There is no rotation, so the denoiser is exact and the true share is known. The best-rotation denoiser of chapter 7 is not used, because its closed share moves with the starting noise. Chains that land are real members of the run, in all 642 coordinates. Level 2 uses the one real reference in this game, molecular dynamics of alanine dipeptide.</p>
+    <p><b>Why two kinds of board.</b> No true Boltzmann reference exists here for a protein, so none is faked. Levels 1 and 3 use a teaching model with a known answer: two real structures of adenylate kinase, closed (1AKE chain A) and open (4AKE chain A), 214 C-alpha atoms, as a mixture of two Gaussians of width ${WIDTH} Å with a share we set. There is no rotation, so the denoiser is exact, and the share is known because we set it. The best-rotation denoiser of chapter 7 is not used, because its closed share moves with the starting noise. Chains that land are real members of the run, in all 642 coordinates. Level 2 uses the one real reference in this game, molecular dynamics of alanine dipeptide.</p>
     <p><b>What this does and does not show.</b> The fields are exact, which Boltz is not. A trained network errs in its own ways, these settings were made for a trained network, and Boltz's loss is aligned, so nobody should read these numbers as Boltz's error on any protein. They show only that a sampler can change populations with a perfect field.</p>
-    <p><b>Level 1.</b> Boltz-2's real schedule in Å, 200 steps. Letting go runs ${DROPS2.toLocaleString('en')} droplets on the line between the states, exact because Gaussians of one width depend only on that line, and ${SHOWN} whole chains, which the tests compare with the line. A drag shows ${PREVIEW.toLocaleString('en')} droplets. Matching the truth is a valley, not a point. On it, η falls as γ₀ rises: η = 1 at γ₀ = 0, about 0.9 at γ₀ = 0.5, and about 0.8 at γ₀ = 1. Boltz-2 sits far from it, near a 2.5% share for a true 10%. This is a result on an exact field, and says nothing about what suits a trained network.</p>
+    <p><b>Level 1.</b> Boltz-2's real schedule in Å, 200 steps. Letting go runs ${DROPS2.toLocaleString('en')} droplets on the line between the states, exact because Gaussians of one width depend only on that line, and ${SHOWN} whole chains, which the tests compare with the line. A drag shows ${PREVIEW.toLocaleString('en')} droplets. Matching the share is a valley, not a point. On it, η falls as γ₀ rises: η = 1 at γ₀ = 0, about 0.9 at γ₀ = 0.5, and about 0.8 at γ₀ = 1. It is a valley for the share alone. States of width 0.3 Å come out 0.39 Å wide at γ₀ = 0.5 and 0.49 Å at γ₀ = 1, so only η = 1, γ₀ = 0 keeps the width as well. Boltz-2's settings sit far from the valley, near a 2.5% share for a set 10%. This is a result on an exact field, and says nothing about what suits a trained network.</p>
     <p><b>Level 2, the reference.</b> Our own molecular dynamics of alanine dipeptide (ACE-ALA-NME) in TIP3P water with ff14SB, 300 K, 1 bar, 4 fs with hydrogen mass repartitioning, in OpenMM. A long simulation visits each conformation in proportion to exp(−U/kT), so on this map frequencies mean something physical. Plain MD was not enough. In 37 ns the runs disagreed with each other, with one real entry to φ above 0, of 915 ps, and four one-frame grazes, and the α-like share of 1 ns blocks ran from 0 to 0.73. Pooled, they gave 25.8 / 71.7 / 2.5%, which agrees with the reference within its error. The reason to replace them was too few crossings, not a wrong answer.</p>
     <p>So three new runs carry a fixed 2-D bias on φ and ψ, from a short well-tempered metadynamics, and each frame is weighted back by exp(+V/kT). ${(m.frames / 1000).toFixed(0)} ns in all. The bars' whiskers are standard errors between those three runs, about ${(100 * m.pop[0]).toFixed(0)} ± ${(100 * m.se[0]).toFixed(0)} / ${(100 * m.pop[1]).toFixed(0)} ± ${(100 * m.se[1]).toFixed(0)} / ${(100 * m.pop[2]).toFixed(1)} ± ${(100 * m.se[2]).toFixed(1)}%, and the three small dots are the runs themselves, ${m.perRun.map((r) => `${(100 * r[0]).toFixed(0)}/${(100 * r[1]).toFixed(0)}/${(100 * r[2]).toFixed(1)}`).join(', ')}. Blocks within runs understate this error. The Kish effective sample size is ${m.ess.toLocaleString('en')}, which ignores time correlation. The α-like signal is still correlated at 100 ps, so independent samples number in the hundreds. The field uses 7,000 frames drawn in proportion to weight, with repeats, ${m.distinct.toLocaleString('en')} of them distinct. It is a Boltzmann sample of this force field, up to that error. It says nothing about how good the force field is.</p>
-    <p><b>The molecule and the small map.</b> Each droplet of the sampler is a point in φ and ψ, shown on the small map, and each of the ${MOLS} molecules on the board is one of those droplets, built from the real starting structure with bond lengths and angles fixed and only φ and ψ turned. The sampler runs on the exact 2-D field of those frames, not on the molecule's coordinates. Before a run the molecules are real MD frames. The molecules turn while droplets run only because the droplets move. Sampler steps are not MD time and not a pathway.</p>
+    <p><b>The molecule and the small map.</b> Each droplet of the sampler is a point in φ and ψ, shown on the small map, and each of the ${MOLS} molecules on the board is one of those droplets, built from the real starting structure with bond lengths and angles fixed and only φ and ψ turned. The sampler runs on the exact 2-D field of those frames, not on the molecule's coordinates. Before a run each molecule takes the φ and ψ of a real MD frame on that one build, so it is not the frame's own coordinates. The molecules turn while droplets run only because the droplets move. Sampler steps are not MD time and not a pathway.</p>
     <p><b>Regions.</b> The three bars are regions of the φ, ψ map, not thermodynamic states. φ above 0 is one region, and it is mostly αL (3.0%, the rest 0.4%). Below φ = 0, ψ above 45° is the strand side, β with PII, and ψ below 45° the α-like side. The line ψ = 45° sits on the shoulder of the α region, not on the valley floor at 65 to 95°. A cut at 20° gives 28.1% α-like, and a cut at 75° gives 31.5%. φ = 0 is a harmless line. The rare bar is drawn ten times taller than the other two.</p>
     <p><b>Free energy.</b> F is minus kT ln p, with kT = ${KT} kcal/mol at 300 K. The rare region lies ${fmt(KT * Math.log(m.pop[1] / m.pop[2]), 2)} ± ${fmt(KT * (m.se[2] / m.pop[2]), 2)} kcal/mol above the strand side. These are region free energies in φ and ψ, with every other degree of freedom integrated out.</p>
     <p><b>The settings.</b> Boltz-2: η = 1.5, γ₀ = 0.8, γ_min = 1 Å, λ = 1.003. Boltz-1: η = 1.638, γ₀ = 0.605, γ_min = 1.107 Å, λ = 0.901 (<i>boltz/main.py</i>). The burst of fresh noise is λ √((1 + γ₀)² − 1) σ, so ${fmt(noiseBurst(PRESETS.boltz2), 2)} σ and ${fmt(noiseBurst(PRESETS.boltz1), 2)} σ, on 154 of Boltz-2's 200 steps, above 1 Å. Karras et al. cap γ at √2 − 1, which adds at most 1.0 σ. Boltz-2's Table 7 says that with the exception of σ_min they opted for AlphaFold3's default hyperparameters. Their documentation says the step size is related to the temperature at which the process samples, and that a lower value gives more diversity.</p>
-    <p><b>The 2-D runs</b> use ${STEPS} steps from ${SMAX}° to ${SMIN}°, with ρ = 7, and γ_min scaled to ${GAMMA_MIN}°. Only η, γ₀ and λ are the models' own. Letting go runs ${DROPS.toLocaleString('en')} droplets on the stored field, which below σ = 5° stays at its σ = 5° grid. That blurs the picture a little and leaves the region shares unchanged, as tools/test.mjs checks against the exact sum. One seed is shown, and it lies within one standard deviation of the mean of 12 seeds for the plain run, noise alone and Boltz-2's settings. Ten seeds of 4,000 droplets, exact to the end, give 29.4 / 67.0 / 3.6% for the plain run, 15.8 / 84.2 / 0.0 for η alone, 28.3 / 69.7 / 2.0 for noise alone, 22.3 / 77.3 / 0.4 for Boltz-2's three settings, and 17.8 / 82.1 / 0.1 for Boltz-1's. Across seeds, the rare region with Boltz-2's settings lies between about 0.2 and 0.6%. Boltz-2's own range and 200 steps gave the same result for the full preset (0.4%). The η-only result does depend on the range: η = 1.04 is enough to halve the rare region on Boltz's range, near 1.1 on this one, and η = 1.5 alone gives 0 / 100 / 0 there. Read the direction and not the number. On a torus instead of a flat sheet, η = 1.5 alone leaves 1.6% and the full preset 0.6%. With η = 1 and no added noise the droplets match, because the data were already Boltzmann samples and the sampler solved the equation faithfully. Boltz has a third reason to differ: its aligned loss means its denoiser is not this exact field, even before the sampler is changed. A longer step alone empties the rare region, and the added noise takes back part of what it did.</p>
-    <p><b>More steps do not repair η.</b> η changes the equation being solved, not the accuracy of solving it. The flow runs too fast at every noise level, so a finer schedule converges to the wrong answer.</p>
+    <p><b>The 2-D runs</b> use ${STEPS} steps from ${SMAX}° to ${SMIN}°, with ρ = 7, and γ_min scaled to ${GAMMA_MIN}°. Only η, γ₀ and λ are the models' own. Letting go runs ${DROPS.toLocaleString('en')} droplets on the stored field, which below σ = 5° stays at its σ = 5° grid. That blurs the picture a little and leaves the region shares unchanged, as tools/test.mjs checks against the exact sum. One seed is shown, and it lies within one standard deviation of the mean of 12 seeds for the plain run, noise alone and Boltz-2's settings. Ten seeds of 4,000 droplets, exact to the end, give 29.4 / 67.0 / 3.6% for the plain run, 15.8 / 84.2 / 0.0 for η alone, 28.3 / 69.7 / 2.0 for noise alone, 22.3 / 77.3 / 0.4 for Boltz-2's three settings, and 17.8 / 82.1 / 0.1 for Boltz-1's. Across seeds, the rare region with Boltz-2's settings lies between about 0.2 and 0.6%. Boltz-2's own range and 200 steps gave the same result for the full preset (0.4%). The η-only result does depend on the range: η = 1.04 is enough to halve the rare region on Boltz's range, near 1.1 on this one, and η = 1.5 alone gives 0 / 100 / 0 there. With η = 1 and no added noise the droplets match, because the data were already Boltzmann samples and the sampler solved the equation faithfully. Boltz has a third reason to differ: its aligned loss means its denoiser is not this exact field, even before the sampler is changed.</p>
+    <p><b>The order of your three guesses belongs to this map.</b> On this cut-open sheet, a longer step alone empties the rare region, and added noise takes back part of it. Two states in Cartesian space go the same way, 0% for η alone and 2.4% with noise added. But φ and ψ are angles, so their true space is a torus, and there the direction reverses. Carried exactly on a periodic grid, with no droplets, on these 60 steps, the plain run gives 4.2%, noise alone 2.4%, η = 1.5 alone 1.6%, and all three settings 0.6%. The plain 4.2% is the error of 60 steps: 600 give 3.5%, and the frames themselves hold 3.4%. So η alone is no longer the lowest, and adding noise to it lowers the rare region further. Read this level as one exact map, not as a rule about the knobs.</p>
+    <p><b>More steps repair neither η nor fixed noise.</b> η changes the equation being solved, not the accuracy of solving it. The flow runs too fast at every noise level, so a finer schedule converges to the wrong answer. Fixed γ₀ with a first-order step stalls too, for another reason: however many steps there are, each one still jumps from 1.8 σ back to σ in one go. Two states at a set 10%, with noise alone and no change of step size, stay near 7% from 50 to 2,000 steps, and with no noise the same runs reach 10%. Chapter 4 shows the same plateau. Heun on every step recovers most of it at η = 1, 9.5% at 200 steps, and slightly less with more steps, 9.3% at 3,000. At η = 1.5 it reaches only 4.7%, so η is the main cause. Karras et al. shrink γ as steps are added, min(S_churn/N, √2 − 1), and AlphaFold3 and Boltz keep γ₀ fixed.</p>
     <p><b>Sampler steps are not time.</b> Iterations of a sampler are not MD time and not a pathway. Chains landing on the board are not the enzyme opening and closing, and nothing about the order of steps says how a molecule moves between regions.</p>
-    <p><b>Level 3, the two-state calculation.</b> Exact, this game's own, not from a paper. It leaves out centring, random rotation and Boltz's alignment. The axes are odds on a log scale, so a line through 50:50 means the odds are raised to a power. The calculation with states 10 Å apart gives 0.29%, 2.2% and 19.6% for 3.4%, 10% and 30%, powers 1.75, 1.73 and 1.67. At the real 119.5 Å between these chains it gives 0.35%, 2.4% and 19.8%, powers 1.69, 1.69 and 1.65, from 900,000 droplets. So the power is near 1.7 either way, and separation matters a little. With Boltz-1's settings and schedule it is near 2.2. Runs of whole chains in all 642 coordinates agree with the line within sampling error, and the width of the states does not change it. The grey line is a faithful sampler. For a fixed free-energy gap, that power is what cooling to about 1/1.7 of the temperature would do. The link to temperature is an analogy. The view zooms with the noise.</p>
+    <p><b>Level 3, the two-state calculation.</b> Exact, this game's own, not from a paper. It leaves out centring, random rotation and Boltz's alignment. The axes are odds on a log scale, so a line through 50:50 means the odds are raised to a power. The calculation with states 10 Å apart gives 0.29%, 2.2% and 19.6% for 3.4%, 10% and 30%, powers 1.75, 1.73 and 1.67. These two chains lie 120 Å apart as one distance over all 642 coordinates. That is about 8 Å per atom in this frame, and the 7 Å of chapter 7 after best fitting. There it gives 0.35%, 2.4% and 19.8%, powers 1.69, 1.69 and 1.65, from 900,000 droplets. With Boltz-1's settings and schedule it is near 2.2. Runs of whole chains in all 642 coordinates agree with the line within sampling error. The grey line is a faithful sampler.</p>
+    <p><b>Where the power holds.</b> It is near 1.7 while the states lie at least about 4 Å apart as one distance, with a width under about a tenth of that. At width 0.3 Å it is 1.69 at 10 Å and 1.68 at 120 Å, so separation alone does nothing there. Closer, it climbs fast: 1.98 at 3 Å, 2.6 at 2 Å, and about 4 at 1 Å, and a change that moves few atoms can be that close. Wide states go the other way: 10 Å apart, width 3 Å gives 1.5 and width 5 Å gives 0.93.</p>
+    <p><b>An analogy with temperature.</b> For a fixed free-energy gap, raising the odds to that power is what cooling to about 1/1.7 of the temperature would do. That holds for the shares only. The variance inside a state falls by far more than 1/1.7 and by a different amount for each width: 0.3 Å comes out 0.068 Å (1/19.6), 1 Å comes out 0.43 Å (1/5.4), and 3 Å comes out 1.9 Å (1/2.6). No one temperature describes the run.</p>
     <p><b>What the model is trying to reproduce.</b> In Boltz no energy appears in the loss, no temperature, and no exp(−U/kT), and the denoiser is not an exact field. A model returns the distribution of its training data as seen through its sampler. The PDB-wide map gives very different shares from one peptide, because it mixes thousands of residues in folded proteins, each held in place by its neighbours. Among ${K.counts.chains} complete chains of E. coli adenylate kinase we found, ${K.counts.closed} are closed. That records which ligands people chose to crystallise with, not how much time the protein spends closed. Boltz-1 trained on one structure per system. Boltz-2 also trains on NMR and molecular-dynamics ensembles, drawing one conformer at random each time, and adds distance and B-factor targets from the ensemble. That is a real step toward thermal data, and it does not on its own make samples Boltzmann weighted. More seeds shrink the sampling noise around whatever the model and sampler give, and they do not remove a bias.</p>
     <p><b>Boltz-2's MD data.</b> MISATO: 8 ns at 300 K. ATLAS: the last 10 ns of 100 ns. mdCATH: the last 10% of runs of up to 500 ns, at 320 K (Passaro et al., Appendix A.1.2). Section 6 calls the MD data used at the later stages of training relatively small. Runs like these rarely cross slow barriers, so they cannot hold the true weights of slow states.</p>
     <p><b>Reweighting.</b> If you know both the energy of each sample and the probability with which it was generated, you can give each sample the weight p/q. This is the idea of a Boltzmann generator, which gets exact q from an invertible map and p from an energy function (Noé et al. 2019). On the 2-D map a histogram can stand in: with Boltz-2's settings, weights from 5° cells bring the rare region to about 1% with 4,000 droplets and 1.9% with 40,000, because they only sum p over visited cells. Weights cannot create what the sampler missed. In two dimensions you can histogram, and in 1,800 you cannot. Boltz gives no energy for a sample and no density either. Song and colleagues showed that a diffusion model's density can be computed by integrating along the ODE, which holds for a deterministic flow. Algorithm 18 adds noise and fresh rotations at each step, so it has no such formula.</p>
@@ -145,7 +148,7 @@ class Peptide {
   }
 
   drawMap(g) {
-    const b = this.run.state.T.box, s = Math.min(112, b.w * 0.3), x0 = b.x + 10, y0 = b.y + 22, k = s / 360;
+    const b = this.run.state.T.box, s = Math.min(112, b.w * 0.3), x0 = b.x + 10, y0 = b.y + 34, k = s / 360;
     g.save();
     g.fillStyle = 'rgba(250, 250, 247, .7)'; g.fillRect(x0, y0, s, s);
     g.strokeStyle = `rgba(${INK}, .3)`; g.lineWidth = 1; g.strokeRect(x0, y0, s, s);
@@ -260,7 +263,9 @@ class Pad {
     if (this.ring) {
       const x = this.xOf(this.ring.eta), y = this.yOf(this.ring.gamma);
       g.strokeStyle = PLUM; g.lineWidth = 2.4; g.setLineDash([4, 3]); g.beginPath(); g.arc(x, y, 13, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
-      g.font = '700 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = PLUM; g.textAlign = x > pad.x + pad.w * 0.6 ? 'right' : 'left'; g.fillText(this.ring.label, x + (x > pad.x + pad.w * 0.6 ? -19 : 19), y + (y > pad.y + pad.h * 0.5 ? -8 : 16));
+      g.font = '700 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = PLUM;
+      // A long label goes under the ring, so that it stays inside the pad.
+      if (this.ring.label.length > 8) { g.textAlign = 'right'; g.fillText(this.ring.label, x + 24, y + 32); } else { g.textAlign = x > pad.x + pad.w * 0.6 ? 'right' : 'left'; g.fillText(this.ring.label, x + (x > pad.x + pad.w * 0.6 ? -19 : 19), y + (y > pad.y + pad.h * 0.5 ? -8 : 16)); }
     }
     const x = this.xOf(this.eta), y = this.yOf(this.gamma);
     g.fillStyle = `rgba(${INK}, .14)`; g.beginPath(); g.arc(x, y, 18, 0, Math.PI * 2); g.fill();
@@ -296,12 +301,12 @@ class Pad {
 
 const pc = (v, d = 1) => `${(100 * v).toFixed(d)}%`;
 const caption = (run, text) => run.state.T.extra.push((g) => { if (run.state.caption === text) { const b = run.state.T.box; g.save(); g.font = '500 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = SOFT; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillText(text, b.x + b.w / 2, b.y + 13); g.restore(); } });
-const MIX = 'Exact mixture, not Boltz', RUN = 'Real simulation, not Boltz';
+const MIX = 'Exact mixture, not Boltz', RUN = 'Real simulation, not Boltz', STEPPING = 'Sampler steps, not MD time', NOT_MOTION = 'Sampler steps, not opening and closing';
 
 async function level1(run) {
   const { P, T, C } = run.state, { ui, sound } = run;
-  run.level(GOALS[0], ['real', 'game', 'model']);
-  caption(run, MIX); run.state.caption = MIX;
+  run.level(GOALS[0], ['real', 'game', 'model', 'paper']);
+  caption(run, MIX); caption(run, NOT_MOTION); run.state.caption = MIX;
   Object.assign(P, { eta: START[0], gamma: START[1], live: true, locked: false, ring: null, guessing: false, guess: null, hideBars: false, off: false, marks: [] });
   P.ref = { names: ['closed', 'open'], colors: [ULTRA, TEAL], pop: [1 - SHARE, SHARE], se: [TOL, TOL], max: [1, 0.25] };
   P.bars = [1 - SHARE, 0]; P.goal = [1 - SHARE, 0];
@@ -312,26 +317,30 @@ async function level1(run) {
     run.scoped(P.bind(run.safe(async () => {
       P.want = null;
       P.locked = true;
+      run.state.caption = NOT_MOTION;
       const seed = 5, out = await C.go(SHARE, twoOpt(P.eta, P.gamma), seed);
+      run.state.caption = MIX;
       P.locked = false;
       if (out === null || !run.alive) return;
       P.goal = [1 - out, out];
       if (P.marks.length < 420) P.marks.push({ eta: P.eta, gamma: P.gamma, ok: Math.abs(out - SHARE) <= TOL, rare: out / SHARE });
       if (Math.abs(out - SHARE) <= TOL) { P.locked = true; T.flash(true); done(); return; }
       T.flash(false); sound.soft();
-      ui.feedback(`Open ${pc(out)}, true ${pc(SHARE, 0)}.`, 'bad');
+      ui.feedback(`Open ${pc(out)}, set ${pc(SHARE, 0)}.`, 'bad');
     })));
     run.scoped(run.idle(() => P.padHint()));
   });
-  await run.won(`Open ${pc(P.goal[1])}, true ${pc(SHARE, 0)}.`, 1);
+  await run.won(`Open ${pc(P.goal[1])}, set ${pc(SHARE, 0)}.`, 1);
 }
 
 async function runSampler(run, opt) {
   const { P, pour, S, F, Dfast, Mol } = run.state, my = (P.token += 1), rng = makeRng(SEED);
+  run.state.caption = STEPPING;
   pour.start(rng, F.mix.mx, F.mix.my, SMAX);
   // Pour paints through this: every frame the droplets move, the molecules follow them.
   pour.tank = { setZoom: () => {}, paint: (x, y, n) => { Mol.set(x, y, n); } };
   const ok = await pour.run(run, S, (p, g, i, k) => stochasticStep(p, S[k], S[k + 1], Dfast, g, rng, opt), { seconds: 1.1, halt: () => my !== P.token });
+  run.state.caption = RUN;
   if (!ok || !run.alive) return null;
   const pop = populations(pour.x, pour.y, pour.n);
   P.goal = pop;
@@ -342,7 +351,7 @@ async function runSampler(run, opt) {
 async function level2(run) {
   const { P, T, C, m } = run.state, { ui, sound } = run;
   run.level(GOALS[1], ['real', 'game', 'model', 'paper']);
-  caption(run, RUN); run.state.caption = RUN;
+  caption(run, RUN); caption(run, STEPPING); run.state.caption = RUN;
   C.on = false; C.bundle.hide();
   const Mol = run.state.Mol ??= new Peptide(run);
   Mol.on = true;
@@ -364,7 +373,7 @@ async function level2(run) {
     };
     run.scoped(P.bind(run.safe(async (t) => {
       if (t === 'pad') {
-        if (P.onRing()) { P.guessing = true; P.guess = 0.05; ui.feedback('Now guess.'); sound.drip?.(0.6); }
+        if (P.onRing()) { P.guessing = true; P.guess = 0.05; sound.drip?.(0.6); }
         return;
       }
       P.locked = true; P.guessing = false;
@@ -388,7 +397,7 @@ async function level2(run) {
     run.scoped(run.idle(() => (P.guessing ? P.barHint() : P.padHint(P.ring.eta, P.ring.gamma))));
     begin(0);
   });
-  await run.won('Two knobs, both changed in Boltz-2.', 2);
+  await run.won('Flat map only: a torus reverses this.', 2);
   Mol.on = false; Mol.bundle.hide();
   run.world.mood = { flow: 0.0011, decay: 0.92, trail: 0.9 };
 }
@@ -422,7 +431,7 @@ class Odds {
     for (const v of [0.5, 0.1, 0.01, 0.001]) { g.fillText(`${100 * v}%`, L - 5, Y(v) + 4); g.strokeStyle = `rgba(${INK}, .09)`; g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(R, Y(v)); g.stroke(); }
     g.textAlign = 'center';
     for (const v of [0.02, 0.05, 0.1, 0.2, 0.5]) g.fillText(`${100 * v}%`, X(v), base + 14);
-    g.textAlign = 'left'; g.fillText('true share', L + 4, p.y + p.h - 2); g.strokeStyle = 'rgba(244, 245, 243, .9)'; g.lineWidth = 3.5; g.strokeText('after sampling', L + 6, up + 12); g.fillText('after sampling', L + 6, up + 12);
+    g.textAlign = 'left'; g.fillText('set share', L + 4, p.y + p.h - 2); g.strokeStyle = 'rgba(244, 245, 243, .9)'; g.lineWidth = 3.5; g.strokeText('after sampling', L + 6, up + 12); g.fillText('after sampling', L + 6, up + 12);
     g.textAlign = 'right'; g.fillText('faithful', X(0.08) - 6, Y(0.08) - 6);
     g.strokeStyle = `rgba(${INK}, .5)`; g.lineWidth = 1.6; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(X(0.02), Y(0.02)); g.lineTo(X(0.5), Y(0.5)); g.stroke(); g.setLineDash([]);
     if (this.curve) {
@@ -448,15 +457,15 @@ class Odds {
 
 async function level3(run) {
   const { P, T, C } = run.state, { ui, sound } = run;
-  run.level(GOALS[2], ['real', 'game', 'model']);
-  caption(run, MIX); run.state.caption = MIX;
+  run.level(GOALS[2], ['real', 'game', 'model', 'paper']);
+  caption(run, MIX); caption(run, NOT_MOTION); run.state.caption = MIX;
   P.off = true; P.live = false; P.want = null; P.job = null; P.token += 1;
   if (run.state.Mol) { run.state.Mol.on = false; run.state.Mol.bundle.hide(); }
   run.world.mood = { flow: 0.0011, decay: 0.92, trail: 0.9 };
   C.on = true; T.setSpan(78, 0); T.setPanel(236, 0, 300);
   const O = run.state.O = new Odds(run);
   run.probe = { O, C };
-  ui.feedback('Our own calculation, not a paper\'s.');
+  ui.feedback('Papers\' settings, our calculation.');
   await run.until((done) => {
     let set = 0, at = 0, seed = 1;
     const deal = () => {
@@ -469,7 +478,9 @@ async function level3(run) {
       O.locked = true;
       const p = O.p, guess = O.y;
       seed += 1;
+      run.state.caption = NOT_MOTION;
       const out = await C.go(p, twoOpt(1.5, 0.8), seed);
+      run.state.caption = MIX;
       if (out === null || !run.alive) return;
       O.points.push({ p, out });
       sound.drip?.(0.6);
@@ -495,5 +506,5 @@ async function level3(run) {
   });
   const fit = O.points.filter((q) => q.out > 0).map((q) => oddsPower(q.p, q.out));
   O.curve = fit.reduce((a, b) => a + b, 0) / fit.length;
-  await run.won('Rarer states shrink more.', 3, 3200);
+  await run.won('Of two states, the rarer shrinks more.', 3, 3200);
 }

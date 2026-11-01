@@ -55,7 +55,7 @@ function bondMean(run, x) {
 async function dissolve(run) {
   const { ui, sound } = run, { E, n, x } = run.state;
   ui.tags('real', 'game');
-  await run.line(`This is ubiquitin, every heavy atom, from a real ensemble fitted to NMR data. In chapter 2 a point was two numbers. Now a point is all ${E.n} atoms at once, ${E.dim.toLocaleString('en')} numbers, and nothing else changes.`);
+  await run.line(`This is ubiquitin, every heavy atom, from a real ensemble fitted to NMR data. In chapter 2 a point was two numbers. As in chapters 1 and 4, a point is now all ${E.n} atoms at once, ${E.dim.toLocaleString('en')} numbers, and nothing else changes.`);
   ui.reads([{ id: 'r-s', value: '0 Å', label: 'noise σ' }, { id: 'r-b', value: fmt(bondMean(run, x), 2), label: 'mean bond length, Å' }, { id: 'r-g', value: fmt(rg(x), 1), label: 'radius of gyration, Å' }]);
   ui.say('Each coordinate gets its own Gaussian noise. <b>Drag σ up slowly, and read the two lengths.</b>');
   const y = E.models[0];

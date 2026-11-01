@@ -17,14 +17,18 @@ export function adkSplit(K, hide) {
   return { stored: all.filter((a) => !hide.includes(a.entry)).map((a) => a.i), hidden: all.filter((a) => hide.includes(a.entry)).map((a) => a.i) };
 }
 
-// Chapter 4. The ruler is cut into slots, even in log noise. The top slot is the fixed start.
+// Chapter 4. The ruler is cut into slots, even in log noise. The top slot is the fixed start, high enough that a perfect run can reach the set share.
 export const STOPS = {
-  smax: 200, smin: 0.5, slots: 25, seed: 13, noise: 0.8, shown: 24, samples: 4000,
-  crisp: 0.2, // A in level 1: how near a real conformer the structure must land.
-  band: 0.015, blur: 0.15, // Levels 2 and 3: how near the open share must land, and how sharp the chains must be.
-  first: [0, 1, 2, 3, 5, 8], // Level 1. Evenly spaced in noise, more or less, so that they never reach low noise.
-  second: [0, 4, 8, 12], thirdFirst: [0, 1, 2, 4, 6],
-  budget: [6, 5, 7],
+  smax: 1000, smin: 0.5, slots: 25, seed: 13, noise: 0.8, shown: 24,
+  samples: 4000, // Runs on the kinase.
+  draws: 2000, // Runs on ubiquitin: enough to count 39 conformers.
+  crisp: 0.2, even: 37, // Level 1: how near a real conformer a run must land, and the even count it must reach, of 39.
+  band: 0.015, blur: 0.15, fair: 16, // Levels 2 and 3: how near the open share must land, how sharp the chains must be, and the even count of 17, level 1's bar.
+  first: [0, 1, 2, 3, 4], // Level 1. All high, so it starts as a blur of one structure.
+  // Levels 2 and 3 start sparse, because from a full ladder a few lucky drags would be enough. Level 3 shows no red, so its hand walks toward this ladder:
+  // a stop inside the jump that crosses 120 A, the stops below, then second looks from that jump down to about 30 A.
+  second: [0, 5, 10, 20], thirdFirst: [0, 4, 9, 14, 20], thirdAnswer: { slots: [0, 4, 7, 9, 11, 14, 18, 20], looks: [4, 7, 9] },
+  budget: [5, 10, 11],
 };
 export const slotSigma = (slot) => STOPS.smax * (STOPS.smin / STOPS.smax) ** (slot / (STOPS.slots - 1));
 export const ladderOf = (slots, seconds = []) => slots.map((slot, i) => ({ s: slotSigma(slot), second: !!seconds[i] }));
@@ -43,7 +47,7 @@ export const twoOpt = (eta, gamma) => ({ eta, gamma0: gamma, gammaMin: TWO.gamma
 // Chapter 9, level 2: the real simulation of alanine dipeptide, on its exact 2-D field. λ stays at Boltz-2's value everywhere on the pad.
 export const PAD = {
   steps: 60, smax: 400, smin: 1, seed: 9, lambda: 1.003, gammaMin: 4, drops: 9000, eta: [0.8, 1.8], noise: [0, 1], shown: 30,
-  rounds: [{ eta: 1.5, gamma: 0, label: 'η 1.5' }, { eta: 1, gamma: 0.8, label: 'γ 0.8' }, { eta: 1.5, gamma: 0.8, label: 'Boltz-2' }],
+  rounds: [{ eta: 1.5, gamma: 0, label: 'η 1.5' }, { eta: 1, gamma: 0.8, label: 'γ 0.8' }, { eta: 1.5, gamma: 0.8, label: 'Boltz-2\'s settings' }],
   guess: 0.01, // How close a guess at the rare region must be, as a share.
 };
 export const padOpt = (eta, gamma) => ({ eta, gamma0: gamma, gammaMin: PAD.gammaMin, lambda: PAD.lambda });
