@@ -30,6 +30,8 @@ All fonts are licensed under the SIL Open Font License 1.1. See [LICENSES/OFL-1.
 | Cormorant Upright | 2015 The Cormorant Project Authors | Mechanisms of catalytic reactions by biomolecules learner |
 | Alegreya Sans | 2013 The Alegreya Sans Project Authors | Mechanisms of catalytic reactions by biomolecules learner, Prediction mechanism of AlphaFold2 learner |
 | Fraunces | 2020 The Fraunces Project Authors | Prediction mechanism of AlphaFold2 learner |
+| Instrument Serif | 2022 The Instrument Serif Project Authors | Diffusion model and Boltz-1/Boltz-2 learner |
+| Ysabeau Office | 2023 The Ysabeau Project Authors | Diffusion model and Boltz-1/Boltz-2 learner |
 
 ## Structures
 
@@ -42,3 +44,5 @@ The Prediction mechanism of AlphaFold2 learner uses these datasets. See its READ
 - [AlphaFold Protein Structure Database](https://alphafold.ebi.ac.uk/) predictions, CC BY 4.0, reduced to the fields the game draws. Varadi et al., Nucleic Acids Res. 2022.
 - [UniProt](https://www.uniprot.org/) annotations, CC BY 4.0.
 - [Pfam](https://www.ebi.ac.uk/interpro/) alignments, CC0 1.0.
+
+The Diffusion model and Boltz-1/Boltz-2 learner stores C-alpha coordinates and confidence values from runs of [Boltz](https://github.com/jwohlwend/boltz), MIT License, on the example MSA `examples/msa/seq2.a3m` from that repository. See its README.

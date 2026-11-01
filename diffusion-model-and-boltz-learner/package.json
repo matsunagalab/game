@@ -1,0 +1,6 @@
+{
+  "name": "diffusion-model-and-boltz-learner",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node tools/build.mjs", "test": "node tools/test.mjs" }
+}
