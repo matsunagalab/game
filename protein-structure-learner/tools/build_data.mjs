@@ -17,10 +17,10 @@ const SPECS = [
   { key: 'gcn4', pdb: '2ZTA', chains: ['A', 'B'] },
   { key: 'nanobody', pdb: '1MEL', chains: ['A'] },
   { key: 'myoglobin', pdb: '1MBN', chains: ['A'], het: ['HEM'] },
-  { key: 'homeodomain', pdb: '1ENH', chains: ['A'] },
+  { key: 'homeodomain', pdb: '1ENH', chains: ['A'], names: true },
   { key: 'tenascin', pdb: '1TEN', chains: ['A'] },
   { key: 'fibronectin', pdb: '1FNA', chains: ['A'] },
-  { key: 'gb1', pdb: '1PGA', chains: ['A'] },
+  { key: 'gb1', pdb: '1PGA', chains: ['A'], names: true },
   { key: 'ferritin', pdb: '2FHA', chains: ['A'], biomt: true },
   { key: 'gfp', pdb: '1EMA', chains: ['A'] },
   { key: 'protease', pdb: '1HSG', chains: ['A'], symChains: ['A', 'B'], het: ['MK1'] },
@@ -346,6 +346,8 @@ function build(spec) {
       res: b64(Uint16Array.from(atomResidue)),
       el: all.map((a) => a.el[0]).join(''),
       side: all.map((a) => (backbone.has(a.name) ? '0' : '1')).join(''),
+      // Atom names, only for the proteins the Pull stages simulate.
+      ...(spec.names ? { names: all.map((a) => a.name).join(' ') } : {}),
     },
     het: hetAtoms.length
       ? { xyz: int16(hetAtoms.flatMap((a) => [a.x - c[0], a.y - c[1], a.z - c[2]])), el: hetAtoms.map((a) => a.el[0]).join('') }

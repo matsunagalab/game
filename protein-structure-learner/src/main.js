@@ -11,6 +11,7 @@ import { startChain } from './chapters/chain.js';
 import { startBond } from './chapters/bond.js';
 import { startBeat } from './chapters/beat.js';
 import { startCore } from './chapters/core.js';
+import { startPull } from './chapters/pull.js';
 import { startShell } from './chapters/ppi.js';
 
 const canvas = document.getElementById('c');
@@ -344,7 +345,7 @@ function startStage(id) {
     ended = true;
     clearTimeout(finishTimer);
   };
-  const start = { chain: startChain, bond: startBond, beat: startBeat, core: startCore, shell: startShell }[stage.chapter];
+  const start = stage.sim ? startPull : { chain: startChain, bond: startBond, beat: startBeat, core: startCore, shell: startShell }[stage.chapter];
   sound.holdBand(stage.chapter === 'beat');
   current = start(ctx, stage);
 }
@@ -366,13 +367,36 @@ function showResult(stage, earned, line) {
   if (line) sheet.append($('p', 'lead', line));
   if (ctx.resultExtra) sheet.append(ctx.resultExtra);
   ctx.resultExtra = null;
-  sheet.append($('p', '', stage.note), $('p', 'ref', stage.ref));
+  // The Pull stages put the principle first and keep the detail behind one optional tap.
+  if (stage.principle) {
+    sheet.append($('p', 'lead', stage.principle));
+    const more = $('details', 'more');
+    more.append($('summary', '', 'The detail'), $('p', '', stage.note), $('p', 'ref', stage.ref));
+    sheet.append(more);
+  } else sheet.append($('p', '', stage.note), $('p', 'ref', stage.ref));
   const acts = $('div', 'acts');
   const next = nextStage(stage.id);
-  acts.append(button('btn', next ? 'Next' : 'Back to the book', () => turnPage(() => (next ? startStage(next.id) : showContents()))));
+  const go = () => turnPage(() => (next ? startStage(next.id) : showContents()));
+  const nextButton = button('btn', next ? 'Next' : 'Back to the book', go);
+  acts.append(nextButton);
   acts.append(button('btn quiet', 'Play again', () => turnPage(() => startStage(stage.id))));
   sheet.append(acts);
   root.append(sheet);
+  // Winning moves on by itself, unless the player stops to read.
+  if (stage.autoNext && next) {
+    let stay = false;
+    const hold = () => {
+      stay = true;
+      nextButton.classList.remove('counting');
+    };
+    sheet.addEventListener('pointerdown', hold);
+    sheet.addEventListener('wheel', hold);
+    nextButton.classList.add('counting');
+    nextButton.style.setProperty('--count', `${stage.autoNext}ms`);
+    setTimeout(() => {
+      if (!stay && sheet.isConnected) go();
+    }, stage.autoNext);
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('in')));
   marks.forEach((m, i) => {
     if (earned[i])

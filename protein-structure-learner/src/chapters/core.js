@@ -23,7 +23,7 @@ function fakeO(ca, n, out) {
   }
 }
 
-class Bay {
+export class Bay {
   constructor(ctx, stage) {
     Object.assign(this, { ctx, stage, hud: ctx.hud, sound: ctx.sound, press: ctx.press, rig: ctx.rig, overlay: ctx.overlay });
     ctx.press.setPaper(PAPER.pink);
