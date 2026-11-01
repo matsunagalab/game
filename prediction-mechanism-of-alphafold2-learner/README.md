@@ -18,7 +18,7 @@ Open `index.html`. Everything is in this one file, so it needs no server and no 
 
 Each chapter leaves one principle to explain in your own words, and ends with one new case to apply it to. A first tier is for doing the computation, a second for a result that takes some thought, and a third for getting the new case right.
 
-Chapters 1, 4 and 9 are a pilot of a new form: three levels of one puzzle, played directly on the board, with almost no text. The other seven are unchanged and still in English. See "Puzzle chapters" below.
+Chapters 1, 4 and 9 are a pilot of a new form: three levels of one puzzle, played directly on the board, with almost no text. The other seven keep the earlier form. All ten chapters are in English and Japanese. See "Puzzle chapters" below.
 
 | # | Chapter | You do | The principle |
 |---|---|---|---|

@@ -5,23 +5,31 @@ import { apply, IDENTITY, rotationAxisAngle, vec } from '../science/frames.js';
 import { fape, rmsd } from '../science/metrics.js';
 import { PoseGas } from '../science/pose.js';
 import { ambient, fmt, frameBoard, theFamily } from './common.js';
+import { tr } from '../i18n.js';
 
 const LIFT = 24;
 
 export default {
   id: 'gas',
-  title: 'Residue gas',
-  tease: 'Every residue is a free paper triangle. Throw them all in the air, from one point, and watch a fold appear.',
-  principle: 'Each residue is treated as a rigid triangle with a position and a rotation, called a frame. The frames float free, with no chain holding them, so any residue can be corrected without swinging the rest of the protein.',
-  goals: ['Run the eight blocks.', 'Run them again with short reach.', 'Get the new case right first time, answer and reason.'],
-  note: `<h3>Chapter note</h3>
+  title: tr('Residue gas', '残基ガス'),
+  tease: tr('Every residue is a free paper triangle. Throw them all in the air, from one point, and watch a fold appear.', 'どの残基も自由に動く紙の三角形である。1点からすべてを宙に投げると、立体構造が現れる。'),
+  principle: tr('Each residue is treated as a rigid triangle with a position and a rotation, called a frame. The frames float free, with no chain holding them, so any residue can be corrected without swinging the rest of the protein.', '各残基は、位置と回転を持つ剛体の三角形として扱う。これをフレームと呼ぶ。フレームは鎖につながれず自由に浮かんでいるので、タンパク質の他の部分を振り回さずに、どの残基でも修正できる。'),
+  goals: [tr('Run the eight blocks.', '8ブロックを実行する。'), tr('Run them again with short reach.', '届く範囲を短くして、もう一度実行する。'), tr('Get the new case right first time, answer and reason.', '新しい例で、答えと理由の両方を1回で正解する。')],
+  note: tr(`<h3>Chapter note</h3>
     <p><b>A frame</b> is T = (R, t). It takes local coordinates to global: x<sub>global</sub> = R x<sub>local</sub> + t. Built by Algorithm 21: t is the C-alpha position, the first axis points from C-alpha to C, N lies in the plane of the first two axes, and the third is their cross product. Composition is (R<sub>1</sub>R<sub>2</sub>, R<sub>1</sub>t<sub>2</sub> + t<sub>1</sub>).</p>
     <p><b>Single representation.</b> Algorithm 6, line 12, makes it by a linear projection of the first row of the MSA representation, from 256 to 384 channels. It is not that row itself.</p>
     <p><b>In AlphaFold2.</b> The structure module has 8 layers with shared weights, and all frames start at the identity: the "black hole" start (Supplement 1.8). Each layer runs invariant point attention, then updates T<sub>i</sub> ← T<sub>i</sub> ∘ ΔT<sub>i</sub>, with ΔT read from the single representation as a non-unit quaternion and a translation (Algorithm 23). Rotation gradients are stopped between layers during training. Side chains come from torsion angles and ideal geometry, as a separate step.</p>
     <p><b>The chain.</b> Peptide-bond geometry is not imposed. The network often breaks it during the module, which the paper says lets it refine locally "without solving complex loop closure problems". From the start of training, FAPE rewards neighbours landing in the right place relative to each other. A violation loss on bad bonds, weight 1.0, comes only in fine-tuning, because earlier it destabilised training and slightly lowered accuracy (Supplement 1.9, 1.9.11). Exact geometry comes only from Amber relaxation after prediction, which does not improve accuracy measured by GDT or lDDT-Cα.</p>
     <p><b>This game's update is a stand-in.</b> Here the pair table holds each pair's real relative pose, taken from 3CHY, which AlphaFold2 does not have. In each block every residue hears from every other where it should be, averages those proposals, moves 42% of the way, and composes the move in its own frame. The first block takes the full turn and 30% of the shift. Only this rule's outward form matches: the frames, the composition and the eight blocks. All the skill of the real module is left out. Its need for every residue to hear nearly every other is a property of this toy: the "no IPA" ablation has no attention or iteration in this module at all, and lost very little (Supplement 1.13.1, 1.13.3).</p>
     <p><b>Real shape, larger size.</b> Triangles keep their real N-Cα-C shape, drawn larger than life so that they can be seen.</p>
-    <p class="small">Sources: Jumper et al., Nature 2021, main text and Supplement 1.8, 1.9.11, Algorithms 20, 21, 23.</p>`,
+    <p class="small">Sources: Jumper et al., Nature 2021, main text and Supplement 1.8, 1.9.11, Algorithms 20, 21, 23.</p>`, `<h3>この章の注</h3>
+    <p><b>フレーム</b>はT = (R, t)で、局所座標を全体の座標に移す。x<sub>global</sub> = R x<sub>local</sub> + tである。Algorithm 21でつくる。tはCαの位置で、第1軸はCαからCへ向かい、Nは第1軸と第2軸の平面内にあり、第3軸はこの2軸のベクトル積である。合成は(R<sub>1</sub>R<sub>2</sub>, R<sub>1</sub>t<sub>2</sub> + t<sub>1</sub>)である。</p>
+    <p><b>シングル表現。</b>Algorithm 6の12行目で、MSA表現の最初の行を線形射影して、256から384チャネルにしてつくる。最初の行そのものではない。</p>
+    <p><b>AlphaFold2では。</b>Structure Moduleは重みを共有する8層からなり、すべてのフレームは恒等変換から始まる。これが「ブラックホール」の出発点である（Supplement 1.8）。各層は不変点アテンション（IPA）を実行したあと、T<sub>i</sub> ← T<sub>i</sub> ∘ ΔT<sub>i</sub>と更新する。ΔTはシングル表現から、単位長でない四元数と並進として読み取る（Algorithm 23）。訓練中は層の間で回転の勾配を止める。側鎖はねじれ角と理想的な幾何から、別の段階としてつくる。</p>
+    <p><b>鎖。</b>ペプチド結合の幾何は課していない。ネットワークはモジュールの途中でしばしばこれを壊すが、論文によると、これにより「複雑なループ閉鎖の問題を解かずに（without solving complex loop closure problems）」局所を精密化できる。訓練の最初から、FAPEでは隣どうしが互いに正しい位置に来ると損失が下がる。悪い結合に対するviolation損失（重み1.0）はファインチューニングでだけ加わる。早い段階で入れると訓練が不安定になり、精度がわずかに下がったからである（Supplement 1.9, 1.9.11）。厳密な幾何が得られるのは予測後のAmberによる緩和だけで、これはGDTやlDDT-Cαで測る精度を改善しない。</p>
+    <p><b>このゲームの更新は代役である。</b>ここではペアの表が、3CHYから取った各ペアの本当の相対姿勢を持っている。AlphaFold2にはこれがない。各ブロックで、すべての残基が他のすべての残基から自分の居場所を聞き、その提案を平均して42%だけ動き、その動きを自分のフレームで合成する。最初のブロックだけは回転をすべて、並進を30%行う。この規則が本物と一致するのは外見だけ、つまりフレーム、合成、8ブロックの点だけである。本物のモジュールの技術はすべて省いている。すべての残基がほぼすべての残基の声を聞く必要があるのは、この小さなモデルの性質である。「no IPA」アブレーションは、このモジュールにアテンションも反復もまったくないが、失ったものはごくわずかだった（Supplement 1.13.1, 1.13.3）。</p>
+    <p><b>形は本物、大きさは拡大。</b>三角形は本物のN-Cα-Cの形のままで、見えるように実物より大きく描いている。</p>
+    <p class="small">出典: Jumper et al., Nature 2021、本文とSupplement 1.8, 1.9.11、Algorithm 20, 21, 23。</p>`),
 
   setup(run) {
     run.state.f = theFamily();
@@ -48,22 +56,22 @@ async function frameOf(run) {
   run.scoped(lab('Cα', tip([0, 0, 0], 9)));
   run.scoped(lab('C', tip(loc.c, 9.6)));
   run.scoped(lab('N', tip(loc.n, 9.6)));
-  await run.line(`This is residue D57 of real CheY, drawn large: its N, Cα and C atoms. These three atoms are rigid, a triangle that barely changes from residue to residue.`);
-  ui.say('Tap to build its frame.');
+  await run.line(tr(`This is residue D57 of real CheY, drawn large: its N, Cα and C atoms. These three atoms are rigid, a triangle that barely changes from residue to residue.`, `本物のCheYの残基D57のN、Cα、C原子を大きく描いた。この3原子は剛体で、残基が違ってもほとんど変わらない三角形をつくる。`));
+  ui.say(tr('Tap to build its frame.', 'タップしてフレームをつくる。'));
   const add = async (label, v, color, text) => {
     await run.until((done) => { ui.ctrl(ui.button(label, () => { ui.ctrl(); done(); }, { id: 'next' })); });
     th.add(tip([0, 0, 0], 9), tip(v, 22), color, 0.5);
     sound.fold();
     ui.say(text);
   };
-  await add('First axis', [1, 0, 0], '#0053d6', 'The first axis points from Cα to C.');
-  await add('Second axis', [0, 1, 0], '#65cbf3', 'The second lies in the triangle\'s plane, on the side of N, at a right angle to the first.');
-  await add('Third axis', [0, 0, 1], '#ff7d45', 'The third is the cross product of the first two, so it stands straight out of the paper.');
-  await run.until((done) => { ui.ctrl(ui.button('Next', () => { ui.ctrl(); done(); }, { id: 'next' })); });
-  await run.line('A cross product has a handedness, which will matter in chapter 7.');
+  await add(tr('First axis', '第1軸'), [1, 0, 0], '#0053d6', tr('The first axis points from Cα to C.', '第1軸はCαからCへ向かう。'));
+  await add(tr('Second axis', '第2軸'), [0, 1, 0], '#65cbf3', tr('The second lies in the triangle\'s plane, on the side of N, at a right angle to the first.', '第2軸は三角形の平面内で、Nの側にあり、第1軸と直交する。'));
+  await add(tr('Third axis', '第3軸'), [0, 0, 1], '#ff7d45', tr('The third is the cross product of the first two, so it stands straight out of the paper.', '第3軸は最初の2軸のベクトル積（cross product）なので、紙面からまっすぐ立ち上がる。'));
+  await run.until((done) => { ui.ctrl(ui.button(tr('Next', '次へ'), () => { ui.ctrl(); done(); }, { id: 'next' })); });
+  await run.line(tr('A cross product has a handedness, which will matter in chapter 7.', 'ベクトル積には右手と左手の区別があり、これは第7章で重要になる。'));
   ui.tags('real', 'game');
-  ui.reads([{ value: `(${T.t.map((v) => v.toFixed(1)).join(', ')})`, label: 'where it sits, t, in Å' }, { value: T.R.slice(0, 3).map((v) => v.toFixed(2)).join(' '), label: 'first row of its rotation, R' }]);
-  await run.line('A <b>frame</b> is where the residue sits and which way it is turned. Six numbers, in effect, and the three backbone atoms follow from them. So does the direction of the side chain.');
+  ui.reads([{ value: `(${T.t.map((v) => v.toFixed(1)).join(', ')})`, label: tr('where it sits, t, in Å', '位置t（Å）') }, { value: T.R.slice(0, 3).map((v) => v.toFixed(2)).join(' '), label: tr('first row of its rotation, R', '回転Rの第1行') }]);
+  await run.line(tr('A <b>frame</b> is where the residue sits and which way it is turned. Six numbers, in effect, and the three backbone atoms follow from them. So does the direction of the side chain.', '<b>フレーム</b>（frame、残基ごとの局所座標系）とは、残基の位置と向きのことである。実質的には6つの数で、主鎖の3原子はここから決まる。側鎖の向きも決まる。'));
 }
 
 async function lever(run) {
@@ -81,7 +89,7 @@ async function lever(run) {
   run.scoped({ dispose: () => world.shadowSpan(80) });
   ui.tags('real', 'game');
   ui.reads([]);
-  await run.line('Why float free? Here is a job. One residue in the middle of the chain sits a little out of place. Fix it.');
+  await run.line(tr('Why float free? Here is a job. One residue in the middle of the chain sits a little out of place. Fix it.', 'なぜ自由に浮かせるのか。次の仕事を考える。鎖の中ほどの残基が1つ、少しずれている。これを直す。'));
   // Chain move: turn one backbone bond. Everything after it swings as one rigid piece.
   const axis = vec.unit(vec.sub(che.ca[k], che.n[k])), pivot = che.ca[k];
   const moved = (ang) => {
@@ -98,31 +106,31 @@ async function lever(run) {
     const pts = fr.map((T) => T.t);
     let far = 0, cnt = 0;
     pts.forEach((p, i) => { const d = vec.dist(p, che.ca[i]); far = Math.max(far, d); if (d > 0.25) cnt += 1; });
-    ui.reads([{ value: `${cnt}`, label: 'residues moved' }, { value: `${fmt(far, 1)} Å`, label: 'furthest one travelled' }]);
+    ui.reads([{ value: `${cnt}`, label: tr('residues moved', '動いた残基') }, { value: `${fmt(far, 1)} Å`, label: tr('furthest one travelled', '最も遠くまで動いた距離') }]);
     run.state[kind] = { cnt, far };
   };
-  ui.say('First work the way a chain works: turn one backbone torsion at residue 50.');
+  ui.say(tr('First work the way a chain works: turn one backbone torsion at residue 50.', 'まず鎖のやり方で動かす。残基50の主鎖のねじれ角を1つ回す。'));
   await run.until((done) => {
-    const nxt = ui.button('Next', () => done(), { id: 'next' });
+    const nxt = ui.button(tr('Next', '次へ'), () => done(), { id: 'next' });
     nxt.disabled = true;
-    const s = ui.slider({ label: 'Torsion angle', min: -12, max: 12, step: 0.5, value: 0, format: (v) => `${v.toFixed(1)}°`, onInput: (v) => { const fr = moved((v * Math.PI) / 180); draw(fr); report(fr, 'chain'); sound.rustle(1, 0.02); if (Math.abs(v) >= 4) nxt.disabled = false; } });
+    const s = ui.slider({ label: tr('Torsion angle', 'ねじれ角'), min: -12, max: 12, step: 0.5, value: 0, format: (v) => `${v.toFixed(1)}°`, onInput: (v) => { const fr = moved((v * Math.PI) / 180); draw(fr); report(fr, 'chain'); sound.rustle(1, 0.02); if (Math.abs(v) >= 4) nxt.disabled = false; } });
     ui.ctrl(s, nxt);
   });
   ui.ctrl();
-  await run.line('A few degrees near the middle swings the whole far end of the protein, like a long lever. Fixing one place breaks another.');
+  await run.line(tr('A few degrees near the middle swings the whole far end of the protein, like a long lever. Fixing one place breaks another.', '中ほどの数度の回転が、長いてこのように、タンパク質の先の部分全体を振り回す。1か所を直すと別の場所が壊れる。'));
   draw(che.frames);
   ui.reads([]);
-  ui.say('Now as a gas: move just that one frame.');
+  ui.say(tr('Now as a gas: move just that one frame.', '次はガスとして動かす。そのフレームだけを動かす。'));
   await run.until((done) => {
-    const nxt = ui.button('Next', () => done(), { id: 'next' });
+    const nxt = ui.button(tr('Next', '次へ'), () => done(), { id: 'next' });
     nxt.disabled = true;
-    const s = ui.slider({ label: 'Move frame', min: -4, max: 4, step: 0.1, value: 0, format: (v) => `${v.toFixed(1)} Å`, onInput: (v) => { const fr = che.frames.map((T, i) => (i === k ? { R: T.R, t: vec.add(T.t, [v, 0, 0]) } : T)); draw(fr); report(fr, 'gas'); sound.rustle(1, 0.02); if (Math.abs(v) >= 1) nxt.disabled = false; } });
+    const s = ui.slider({ label: tr('Move frame', 'フレームを動かす'), min: -4, max: 4, step: 0.1, value: 0, format: (v) => `${v.toFixed(1)} Å`, onInput: (v) => { const fr = che.frames.map((T, i) => (i === k ? { R: T.R, t: vec.add(T.t, [v, 0, 0]) } : T)); draw(fr); report(fr, 'gas'); sound.rustle(1, 0.02); if (Math.abs(v) >= 1) nxt.disabled = false; } });
     ui.ctrl(s, nxt);
   });
   ui.ctrl();
-  await run.line('One residue moved, and nothing else. The price is a stretched bond to its neighbours, which can be mended later.');
+  await run.line(tr('One residue moved, and nothing else. The price is a stretched bond to its neighbours, which can be mended later.', '動いたのは1残基だけで、他は動かない。代償は隣との結合が伸びることだが、これはあとで直せる。'));
   ui.tags('paper');
-  await run.line('This is the <b>residue gas</b>. AlphaFold2 drops the chain and treats residues as free triangles while it works. It mostly learns the bonds from its losses, and a final clean-up makes them exact.');
+  await run.line(tr('This is the <b>residue gas</b>. AlphaFold2 drops the chain and treats residues as free triangles while it works. It mostly learns the bonds from its losses, and a final clean-up makes them exact.', 'これが<b>残基ガス</b>（residue gas）である。AlphaFold2は計算のあいだ鎖を手放し、残基を自由な三角形として扱う。結合はおもに損失から学び、最後の仕上げで正確になる。'));
 }
 
 // Runs eight blocks, animating the flock from each block's frames to the next.
@@ -209,22 +217,22 @@ async function hole(run) {
   zero.forEach((T, i) => s.flock.place(i, T.R, T.t, s.group));
   s.flock.commit();
   ui.tags('paper');
-  await run.line('All 128 residues of CheY now sit at one point, turned the same way, one on top of another. It looks like one triangle.');
-  await run.line('AlphaFold2 starts here, and its authors call it the <b>black hole</b> start. The frames hold no guess at the shape. The guess is already in the pair table, which this module reads.');
-  await run.line('The module reads two things: the pair table, and one row of the MSA table, the row of the protein being predicted. A linear projection of that row, a simple weighted mix of its numbers, is called the <b>single representation</b>, and it holds what the network knows about each residue.');
+  await run.line(tr('All 128 residues of CheY now sit at one point, turned the same way, one on top of another. It looks like one triangle.', 'CheYの128残基すべてが1点に、同じ向きで重なっている。1つの三角形に見える。'));
+  await run.line(tr('AlphaFold2 starts here, and its authors call it the <b>black hole</b> start. The frames hold no guess at the shape. The guess is already in the pair table, which this module reads.', 'AlphaFold2はここから始め、著者らはこれを<b>ブラックホール</b>の出発点（black hole start）と呼ぶ。フレームは形についての予想を何も持っていない。予想はすでにペアの表の中にあり、このモジュールがそれを読む。'));
+  await run.line(tr('The module reads two things: the pair table, and one row of the MSA table, the row of the protein being predicted. A linear projection of that row, a simple weighted mix of its numbers, is called the <b>single representation</b>, and it holds what the network knows about each residue.', 'このモジュールが読むのは2つ、ペアの表と、MSAの表の1行、つまり予測するタンパク質の行である。その行の線形射影（数の単純な重みつき混合）を<b>シングル表現</b>（single representation）と呼び、ネットワークが各残基について知っていることが入っている。'));
   ui.tags('model', 'game');
-  await run.line('Now eight rounds of updates. The update rule here is this game\'s stand-in, and it is told the real relative poses. AlphaFold2 has to infer them with learned weights.');
-  ui.say('Swipe up to throw the flock.');
+  await run.line(tr('Now eight rounds of updates. The update rule here is this game\'s stand-in, and it is told the real relative poses. AlphaFold2 has to infer them with learned weights.', 'ここから8回の更新を行う。ここでの更新規則はこのゲームの代役で、本当の相対姿勢を教えられている。AlphaFold2は学習した重みでこれを推測しなければならない。'));
+  ui.say(tr('Swipe up to throw the flock.', '上へスワイプして群れを投げる。'));
   run.probe.throwAt = () => world.project(new THREE.Vector3(0, LIFT, 0));
   await run.until((done) => {
     let y0 = null;
     const off = run.pointer({ down: (x, y) => { y0 = y; }, up: (x, y) => { if (y0 !== null && y0 - y > 20) { off(); done(); } } });
-    ui.ctrl(ui.button('Throw', () => { off(); done(); }, { quiet: true, id: 'throw' }));
+    ui.ctrl(ui.button(tr('Throw', '投げる'), () => { off(); done(); }, { quiet: true, id: 'throw' }));
   });
   ui.ctrl();
   sound.fold();
-  ui.say('Each residue hears where the others think it should be, and moves part of the way.');
-  const read = (b, r) => ui.reads([{ value: `${b} of 8`, label: 'block' }, { value: fmt(r.f), label: 'loss (FAPE, chapter 7)' }, { value: `${fmt(r.gap, 1)} Å`, label: 'mean gap across peptide bonds' }]);
+  ui.say(tr('Each residue hears where the others think it should be, and moves part of the way.', '各残基は、他の残基が考える自分の居場所を聞き、その途中まで動く。'));
+  const read = (b, r) => ui.reads([{ value: tr(`${b} of 8`, `${b}/8`), label: tr('block', 'ブロック') }, { value: fmt(r.f), label: tr('loss (FAPE, chapter 7)', '損失（FAPE、第7章）') }, { value: `${fmt(r.gap, 1)} Å`, label: tr('mean gap across peptide bonds', 'ペプチド結合の間隔の平均') }]);
   const { res, gas } = await eight(run, { ...s, reach: 0, read });
   run.reach(1);
   run.state.fullRun = res;
@@ -239,8 +247,8 @@ async function hole(run) {
   sound.good(2);
   const last = res[res.length - 1];
   ui.tags('model', 'game');
-  await run.line(`The loss fell from ${fmt(res[0].f)} to ${fmt(last.f)}, and the real gap across a peptide bond is 1.33 Å. The gas reached the fold it was told about.`);
-  await run.line('This shows that eight rounds of moves can assemble free frames. It does not show how to find them: AlphaFold2 has to work that out, with weights it learned.');
+  await run.line(tr(`The loss fell from ${fmt(res[0].f)} to ${fmt(last.f)}, and the real gap across a peptide bond is 1.33 Å. The gas reached the fold it was told about.`, `損失は${fmt(res[0].f)}から${fmt(last.f)}に下がり、本物のペプチド結合の間隔は1.33 Åである。ガスは教えられた立体構造にたどり着いた。`));
+  await run.line(tr('This shows that eight rounds of moves can assemble free frames. It does not show how to find them: AlphaFold2 has to work that out, with weights it learned.', 'これが示すのは、8回の動きで自由なフレームを組み立てられることである。動きの見つけ方は示しておらず、それはAlphaFold2が学習した重みで解かなければならない。'));
 }
 
 async function reach(run) {
@@ -248,18 +256,18 @@ async function reach(run) {
   const s = stageGas(run);
   ui.reads([]);
   ui.tags('model', 'game');
-  await run.line('What if news cannot travel far? Run it again, but let each residue hear only its four neighbours along the chain on each side.');
-  ui.say('Tap to throw.');
-  await run.until((done) => { ui.ctrl(ui.button('Throw', () => { ui.ctrl(); done(); }, { id: 'throw' })); });
-  ui.say('Now each residue hears only its near neighbours.');
-  const read = (b, r) => ui.reads([{ value: `${b} of 8`, label: 'block' }, { value: fmt(r.f), label: 'loss' }]);
+  await run.line(tr('What if news cannot travel far? Run it again, but let each residue hear only its four neighbours along the chain on each side.', '情報が遠くまで届かなかったらどうなるか。もう一度実行するが、各残基が聞けるのは鎖に沿って両側の4残基だけにする。'));
+  ui.say(tr('Tap to throw.', 'タップして投げる。'));
+  await run.until((done) => { ui.ctrl(ui.button(tr('Throw', '投げる'), () => { ui.ctrl(); done(); }, { id: 'throw' })); });
+  ui.say(tr('Now each residue hears only its near neighbours.', '各残基は近くの残基の声しか聞けない。'));
+  const read = (b, r) => ui.reads([{ value: tr(`${b} of 8`, `${b}/8`), label: tr('block', 'ブロック') }, { value: fmt(r.f), label: tr('loss', '損失') }]);
   const { res } = await eight(run, { ...s, reach: 4, read });
   const lost = res[res.length - 1].f;
   run.reach(2);
   run.state.shortRun = res;
-  await run.line(`After eight blocks the loss is still near ${fmt(lost)}, and even short pieces of chain are off. News travels too slowly when each residue hears only its neighbours.`);
+  await run.line(tr(`After eight blocks the loss is still near ${fmt(lost)}, and even short pieces of chain are off. News travels too slowly when each residue hears only its neighbours.`, `8ブロック後も損失は${fmt(lost)}付近で、鎖の短い部分さえずれている。各残基が隣の声しか聞けないと、情報の伝わりが遅すぎる。`));
   ui.tags('model', 'game', 'paper');
-  await run.line('That is a property of this toy, where every residue must hear nearly every other. In AlphaFold2, long-range news has already reached the pair table before this module starts.');
+  await run.line(tr('That is a property of this toy, where every residue must hear nearly every other. In AlphaFold2, long-range news has already reached the pair table before this module starts.', 'これは、すべての残基がほぼすべての残基の声を聞かなければならない、この小さなモデルの性質である。AlphaFold2では、このモジュールが始まる前に、遠くの情報がすでにペアの表に届いている。'));
 }
 
 async function check(run) {
@@ -267,15 +275,15 @@ async function check(run) {
   ambient(run);
   ui.reads([]);
   ui.tags('model');
-  const first = await run.choose('A new case. A model of a 300-residue protein is right except for one loop. How does the residue gas let a network correct it?', [
-    { text: 'By turning one torsion angle in the loop.', right: false, why: 'That can work with loop-closure tools, but one turn alone swings everything beyond it, as your slider showed. The gas avoids that.' },
-    { text: 'By moving only the loop\'s frames, and mending the bonds later.', right: true, why: 'Right. Free frames can be corrected locally, and the stretched bonds can be mended afterwards.' },
-    { text: 'Restart everything from the black hole.', right: false, why: 'That throws away everything that was already right.' },
+  const first = await run.choose(tr('A new case. A model of a 300-residue protein is right except for one loop. How does the residue gas let a network correct it?', '新しい例である。300残基のタンパク質のモデルが、ループ1か所を除いて正しい。残基ガスなら、ネットワークはこれをどう直せるか。'), [
+    { text: tr('By turning one torsion angle in the loop.', 'ループのねじれ角を1つ回す。'), right: false, why: tr('That can work with loop-closure tools, but one turn alone swings everything beyond it, as your slider showed. The gas avoids that.', 'ループ閉鎖の道具を使えばうまくいくこともあるが、1回の回転だけでは、スライダーで見たとおり、その先すべてが振り回される。ガスならこれを避けられる。') },
+    { text: tr('By moving only the loop\'s frames, and mending the bonds later.', 'ループのフレームだけを動かし、結合はあとで直す。'), right: true, why: tr('Right. Free frames can be corrected locally, and the stretched bonds can be mended afterwards.', '正解。自由なフレームは局所的に直せて、伸びた結合はあとで直せる。') },
+    { text: tr('Restart everything from the black hole.', 'すべてをブラックホールからやり直す。'), right: false, why: tr('That throws away everything that was already right.', 'すでに正しかった部分まで捨てることになる。') },
   ]);
-  const second = await run.choose('In the gas, what keeps neighbouring residues joined during the structure module?', [
-    { text: 'A rigid chain, always present.', right: false, why: 'The gas has no chain. Your readout showed gaps far from 1.33 Å in the early blocks.' },
-    { text: 'Nothing strictly. Losses in training ask for it, and a final clean-up makes it exact.', right: true, why: 'Yes. From the start of training, FAPE rewards neighbours landing in the right place relative to each other. A loss on bad bonds comes only in the last stage of training, called fine-tuning, because earlier it destabilised training and slightly lowered accuracy.' },
-    { text: 'The triangle update in the pair table.', right: false, why: 'That shapes the pair table. It holds no bonds in the gas.' },
+  const second = await run.choose(tr('In the gas, what keeps neighbouring residues joined during the structure module?', 'ガスでは、Structure Moduleの間、何が隣どうしの残基をつないでいるか。'), [
+    { text: tr('A rigid chain, always present.', '常にある剛直な鎖。'), right: false, why: tr('The gas has no chain. Your readout showed gaps far from 1.33 Å in the early blocks.', 'ガスに鎖はない。表示された値でも、最初のほうのブロックの間隔は1.33 Åから大きく外れていた。') },
+    { text: tr('Nothing strictly. Losses in training ask for it, and a final clean-up makes it exact.', '厳密には何もない。訓練の損失がつながることを求め、最後の仕上げで正確になる。'), right: true, why: tr('Yes. From the start of training, FAPE rewards neighbours landing in the right place relative to each other. A loss on bad bonds comes only in the last stage of training, called fine-tuning, because earlier it destabilised training and slightly lowered accuracy.', '正解。訓練の最初から、FAPEでは隣どうしが互いに正しい位置に来ると損失が下がる。悪い結合への損失は、訓練の最後の段階（ファインチューニング）でだけ加わる。早く入れると訓練が不安定になり、精度もわずかに下がったからである。') },
+    { text: tr('The triangle update in the pair table.', 'ペアの表の三角形の更新。'), right: false, why: tr('That shapes the pair table. It holds no bonds in the gas.', 'それはペアの表を整えるもので、ガスの結合を保つものではない。') },
   ]);
   if (first && second) run.reach(3);
 }

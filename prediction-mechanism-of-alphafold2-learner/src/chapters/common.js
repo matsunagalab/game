@@ -4,7 +4,7 @@ import { Flock, plddtStock, Quilt, ribbonGeometry, STOCK } from '../world.js';
 import { closestAtoms, columnDistances, getModel, getPAE, getStructure, loadMSA } from '../science/data.js';
 import { apc, compressColumns, miMatrix, precision, rankPairs, reweight } from '../science/msa.js';
 import { localAtoms } from '../science/gas.js';
-import { tr } from '../i18n.js';
+import { ja, tr } from '../i18n.js';
 
 let family = null;
 export function theFamily() {
@@ -147,6 +147,9 @@ export class ContactQuilt {
   }
 }
 
+// Text on a canvas. Latin stays in the game's own face. Japanese takes the device's, as the page's stylesheet does.
+export const canvasFont = (px) => `${px}px "Alegreya Sans", ${ja ? '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, "Noto Sans CJK JP", ' : ''}sans-serif`;
+
 // A small bar chart on a card, drawn at the screen's real resolution.
 export function chart(ui, { height = 86 } = {}) {
   const c = document.createElement('canvas');
@@ -159,7 +162,7 @@ export function chart(ui, { height = 86 } = {}) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     const n = bars.length, gap = 5, bw = (w - gap * (n - 1)) / Math.max(n, 1), base = h - 17;
-    g.font = '12.5px "Alegreya Sans", sans-serif';
+    g.font = canvasFont(12.5);
     g.textAlign = 'center';
     bars.forEach((b, i) => {
       const v = Math.max(0, b.value) / max, x = i * (bw + gap);

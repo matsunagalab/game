@@ -255,9 +255,9 @@ function fail(message) {
 try {
   localise();
   const probe = document.createElement('canvas').getContext('webgl2');
-  if (!probe) fail(tr('This game needs WebGL2, which this browser does not offer. Please try a recent version of Safari, Chrome, Edge or Firefox.', 'このゲームにはWebGL2が必要だが、このブラウザでは使えない。新しいSafari、Chrome、Edge、Firefoxで開いてください。'));
+  if (!probe) fail(tr('This game needs WebGL2, which this browser does not offer. Please try a recent version of Safari, Chrome, Edge or Firefox.', 'このゲームにはWebGL2が必要だが、このブラウザでは使えない。新しいSafari、Chrome、Edge、Firefoxで開く。'));
   else new Game();
 } catch (e) {
   console.error(e);
-  fail(tr('The 3D view could not start on this device. Please try a recent version of Safari, Chrome, Edge or Firefox.', 'この端末では3D表示を開始できなかった。新しいSafari、Chrome、Edge、Firefoxで開いてください。'));
+  fail(tr('The 3D view could not start on this device. Please try a recent version of Safari, Chrome, Edge or Firefox.', 'この端末では3D表示を開始できなかった。新しいSafari、Chrome、Edge、Firefoxで開く。'));
 }
