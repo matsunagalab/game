@@ -16,19 +16,21 @@ Open `index.html`. Everything is in this one file, so it needs no server and no 
 
 ## Chapters
 
-Each chapter leaves one principle to explain in your own words, and ends with a new case. The first drop is for doing the computation, the second for a result that takes some thought, and the third for getting the new case right first time, answer and reason.
+Chapters 1, 4 and 9 are puzzles, a pilot for the rest, and their boards are real 3D proteins. Each has one task always in view, done by dragging on the board itself, with three levels that move on by themselves. The third level is a new real case with less help. Nothing is read between moves: the board answers, the end sheet states the principle in a sentence or two, and the detail is in the chapter note, which is optional.
+
+The other six chapters still leave one principle to explain in your own words, and end with a new case. The first drop is for doing the computation, the second for a result that takes some thought, and the third for getting the new case right first time, answer and reason.
 
 | # | Chapter | You do | The principle |
 |---|---|---|---|
-| 1 | Making new from old | Pour 8,000 real residues, try lookup, tune a histogram on held-out residues, count the cells a protein would need | What a generative model is, why it is judged on unseen data, why tables fail |
+| 1 | Making new from old | Drag the width of a model that adds noise to stored structures of real ubiquitin, score it on conformers it never saw, do it again with 4 stored, then on adenylate kinase with the score hidden | What a generative model is, why it is judged on unseen structures, and why noise on copies cannot hold chemistry |
 | 2 | Dissolve it | Add real Gaussian noise, find where each peak of the density dies, bend the noise schedule, read Boltz-2's real one | Forward diffusion, scale, the schedule |
 | 3 | The best guess | Drag a noisy point over the exact posterior, find a guess in empty water, test Tweedie's formula by finite differences, follow the score field | The denoiser, the posterior, the score |
-| 4 | Run it backward | Launch droplets from pure noise, race Euler and Heun per denoiser call, rerun the same noise with and without churn | Samplers, determinism, what the noise decides |
+| 4 | Run it backward | Set a sampler's stops and bring real ubiquitin out of a cloud of atoms, then keep the rare open chains of adenylate kinase on a budget of denoiser calls, spending spare calls on new stops or Heun's second looks, then again under Boltz-2's size of fresh noise | Samplers, what a call buys, why a rare state needs them |
 | 5 | Train a network in your hand | Train a real network with live loss, try three noise diets, beat the exact formula on unseen residues from only 100 examples | Training, loss, why networks generalise and the ideal denoiser copies |
 | 6 | From two numbers to thousands | Dissolve and rebuild ubiquitin in all 1,803 coordinates, measure equivariance against the number of orientations, compare the plain mean over rotations with real Boltz-2, align by hand and by Kabsch, find where a chiral centre loses its hand | Rotation, alignment, chirality, hallucination |
 | 7 | Same noise, different answer | Send one noise to different islands by residue type, test the guidance identity, open and close real adenylate kinase, predict a share, scrub a real Boltz-2 run | Conditioning, the trunk, why the first guess can be so good |
 | 8 | What Boltz added | Run the recipe of Boltz-steering on the map in four modes against an exact target and tune it, compute a confidence score, see what a Pearson R buys, read the limits | Boltz-1, Boltz-1x, Boltz-2, affinity with its limits |
-| 9 | Is it the Boltzmann distribution? | Compute a free-energy difference, reproduce populations from MD, change each sampler setting alone and together, find a step scale that halves a rare region, run an exact two-state test on Boltz-2's schedule, reweight, judge uses of samples | Sample frequencies are not populations unless checked |
+| 9 | Is it the Boltzmann distribution? | Drag one dot in the plane of η and γ₀ until sampled chains of adenylate kinase match a known true share, guess what each knob does to a rare region of the real MD reference on the alanine dipeptide molecule, then predict the exact run on Boltz-2's schedule | Sample frequencies are not populations unless checked |
 
 ## What is real and what is not
 
@@ -44,38 +46,47 @@ Every screen carries one or more of five tags.
 
 ### Real computations on real data, live
 
-- The exact denoiser of Karras et al. 2022, Eq. 57, over 8,000 real residues (chapters 2 to 4), conditional versions for glycine, proline and alanine (chapter 7), and over MD frames (chapter 9). Moved droplets use a grid of the exact field, with a mean error under 2% of σ, tested in `tools/test.mjs`. Below 5° the sum is exact over neighbours.
+- The exact denoiser of Karras et al. 2022, Eq. 57, over 8,000 real residues (chapters 2 and 3), conditional versions for glycine, proline and alanine (chapter 7), and over MD frames (chapter 9). Over real structures in one frame in chapter 4, where noise outside their span cannot change the weights, so a run works on 38 numbers for ubiquitin and 16 for the kinase set, exactly, and a phone can run thousands of chains. Moved droplets use a grid of the exact field, with a mean error under 2% of σ, tested in `tools/test.mjs`. Below 5° the sum is exact over neighbours, except on chapter 9's board, which stays on the 5° grid so that it can follow a finger. That leaves the region shares unchanged, also tested.
 - Tweedie's formula, checked live by finite differences of the real log-density.
-- Euler, Heun, churn (Karras et al. Algorithms 1 and 2) and AlphaFold3's Algorithm 18.
+- A kernel density on real structures in chapter 1, with its log density on hidden structures, in bits per atom.
+- Euler, Heun, churn (Karras et al. Algorithms 1 and 2) and AlphaFold3's Algorithm 18. In chapter 4 the stops are placed by hand, and each step is Euler or Heun as the player chose.
 - A real neural network: three layers of 48 units, 5,666 parameters, Adam, trained on the device.
 - Kabsch superposition, mirror distances, Rg, the plain posterior mean over 4,000 random orientations, and the posterior for a hand with rotation integrated over 8,000 random rotations.
-- An exact two-state run of Algorithm 18 on Boltz-2's schedule in Å, 200 steps, with the odds to a fitted power. This is this game's own calculation, not a published result.
+- An exact two-state run of Algorithm 18 on Boltz-2's schedule in Å, 200 steps, on the line between two real chains of adenylate kinase, with whole chains in all 642 coordinates as members of the same run, and the odds to a fitted power. This is this game's own calculation, not a published result. It leaves out centring, random rotation and Boltz's alignment.
 - Feynman-Kac steering, by the recipe of Boltz-1's Algorithm 2 and `sample()` in `modules/diffusionv2.py`, on the map, against an exact known target.
 
 ### Teaching models
 
 Each of these carries the Teaching model tag on screen.
 
+- **Noise on copies** (chapter 1). A real generative model, and the blurred data a diffusion model passes through, but not how one is built. It teaches the test, not the machinery.
+- **Exact fields on a few real structures in one frame** (chapters 1, 4, 9). There is no rotation. An exact field over a few structures can only give those structures back. Chapter 4 does not use the best-rotation denoiser, because it bends the shares of states, as below.
+- **Two real chains as a mixture** (chapter 9). Closed and open adenylate kinase, Gaussians of width 0.3 Å, with a share we set. This is how a protein gets a known true share, since no Boltzmann reference for a protein exists here. The counts of chains in chapter 4's set are also our choice and not populations.
+- **Second looks stop by stop** (chapter 4). Mixing Euler and Heun within one run is sound mathematics and this game's own move. Real samplers keep to one rule, and Boltz uses first-order steps only.
 - **The best-rotation denoiser** (chapters 6, 7). Each structure is rotated onto the noisy point by Kabsch, then weighted. It is not the integral over rotations. With no condition on adenylate kinase it gave 78% closed over 300 test runs against 68% in the set. 36 and 144 Euler steps give the same share, so the gap comes from this shortcut. The share also depends on where the noise starts: from 60, 90, 250 and 800 Å the same 22 structures gave about 94, 76, 48 and 42% closed. Set composition at 90 Å: 13, 30, 50 and 68% closed in the set give 28, 58, 70 and 83% in runs, so it tracks the data but bends upward. An exact field would not depend on the start, so the near match at 90 Å is partly luck. The likely reason, not proven, is that best-rotation weights depend on size: open chains have Rg 19.4 Å against 16.4 Å closed.
 - **One structure in K orientations** (chapter 6). A small exact test of what training on orientations does.
 - **Conditions as labels** (chapter 7). Residue type and "nucleotide bound" stand in for what the trunk computes.
 - **Steering on the map** (chapter 8). Same recipe, in 2-D, with a flat-bottom energy on a disc. Energy units differ from Boltz, so the best λ here says nothing about Boltz's default of 4.
 - **What R buys** (chapter 8). Forty invented ligands with Gaussian errors.
-- **Sampler settings on a 2-D exact field** (chapter 9). Boltz's η, γ₀ and λ on our map, with our schedule unless stated.
-- **Histogram weights** (chapter 9). p/q from 5° histograms, which is only possible in two dimensions.
+- **Sampler settings on a 2-D exact field** (chapter 9). Boltz's η, γ₀ and λ on our map of MD frames, with our schedule unless stated.
+- **The dipeptide on the board** (chapter 9). Each molecule is one sampler droplet, built from the real starting structure with bond lengths and angles fixed and only φ and ψ turned. The sampler runs on the 2-D field, not on the molecule's coordinates.
+- **Histogram weights** (chapter 9 note). p/q from 5° histograms, which is only possible in two dimensions.
 
 ### Simplifications
 
-- **The flat sheet** (chapters 1 to 5, 7 to 9). Angles wrap round, but the map is cut along φ = ±180° and ψ = −100° and treated as flat. Only 25 of 55,337 general residues lie within 5° of a cut. Chapter 2 says so on screen and tags it.
+- **The flat sheet** (chapters 2, 3, 5, 7, 8 and level 2 of chapter 9). Angles wrap round, but the map is cut along φ = ±180° and ψ = −100° and treated as flat. Only 25 of 55,337 general residues lie within 5° of a cut. Chapter 2 says so on screen and tags it.
 - **Curl of the water.** Trails and the slow curl of the ink are for looks. They fade to nothing as noise falls. Droplet positions come from data and the field, and on the title from the probability-flow ODE of the best-rotation denoiser on real ubiquitin conformers.
-- **The title and the playback are not folding.** Sampling steps are iterations of a sampler. They are no folding pathway and no trajectory. The title screen and chapter 7 say so.
+- **The title, the boards and the playback are not folding.** Sampling steps are iterations of a sampler. They are no folding pathway, no trajectory and not MD time. The title screen, chapter 4's board and chapter 7 say so, and chapter 9's note does.
 - **Music.** See below.
 
 ### Results found while building, kept as found
 
-- Held-out score of the histogram peaks at 3.96 bits at 5 to 7.5°, and falls to 2.34 bits at 1°, while the training score rises to 5.01.
+- Noise on copies of ubiquitin scores best on hidden conformers near σ = 1.0 Å, and bonds there are wrong by about 1.5 Å. Real conformers vary by 0.006 Å. So no width gives new structures and sound chemistry together. The hidden score collapses at small widths (−220 bits per atom at 0.1 Å), and the stored score climbs for ever. Hiding 10 of the bundled 39 conformers gives the same peak as scoring on the 77 never bundled, for all four ways of hiding every fourth one, and distance between conformers does not depend on their order in the file.
+- The peak falls about where a new structure lies as far from its source, √3 σ, as stored structures lie from each other. Ubiquitin: 1.9 Å apart gives 1.1 Å, best 1.0. Kinase: 0.5 Å gives 0.3, best 0.3. This is a rule of thumb from these data.
+- Fewer data move that peak little: 29, 12 and 4 stored conformers give about 1.0, 1.2 and 1.5 Å. A histogram on the 2-D map moves further, from about 6° to about 10° with a tenth of the residues.
+- With an exact field over one fold, the ladder hardly matters. Almost any stops land exactly on a stored conformer, 0.00 Å away, even with two stops. Only a last stop at high noise blurs it, about 1 Å from any conformer. This matches Boltz-1's own table, which moved little between 20 and 200 steps.
+- A rare state does need the ladder. In 17 kinase chains with 11.8% open, 5 Euler calls give 8 to 9% and 25 Euler stops give 10%. A stop near 45 to 57 Å, where chains decide, and one second look on the long first jump give about 11.5%. Under fresh noise of γ = 0.8 those ladders fall to 7 to 8.5%, Euler with 7 calls gives 8.6%, and three second looks about 11%. This is one seed and one set.
 - Peaks of the blurred density: 4 at σ = 25°, 3 at 35°, 2 at 40°, 1 at about 70°. The spread of the data, σ_data, is 66°.
-- On the exact field, with η = 1 and no churn, populations come back within about half a percent. Heun with 3 steps is far worse than Euler with 3.
 - Boltz-2's 200-step schedule puts 118 steps above 16 Å, 37 between 1 and 16 Å, and 45 below 1 Å. Its noise burst applies on 154 steps.
 - On 100 training residues, the exact field gives about 99% copies and covers about 60% of unseen residues within 5°. A small network on the same 100 gives about 12% copies and covers about 90%, with similar precision. This depends on training length: trained far longer, the same network drifts toward copying.
 - Diets: 500 training steps on big noise only or small noise only leave the samples about 16° from unseen data, against about 4° for all noise levels.
@@ -88,13 +99,32 @@ Each of these carries the Teaching model tag on screen.
 - The reference uses a fixed 2-D bias and weights, 24.0 ns: about 30 ± 5 / 66 ± 4 / 3.4 ± 0.7% (α-like side, strand side, φ above 0), standard errors between three independent runs. The runs gave 37/61/1.9, 22/73/4.4 and 34/62/3.4. Blocks within runs understate this, and longer blocks keep raising the error. The Kish effective sample size of 3,404 ignores time correlation, and independent samples are about 100 to 300. The free-energy gap of the rare region is 1.77 ± 0.13 kcal/mol.
 - Regions: φ above 0 is αL 3.0% and 0.4% else. ψ = 45° sits on the shoulder of the α region, not on the valley floor at 65 to 95°: a cut at 20° gives 28.1% α-like, and at 75° gives 31.5%.
 - Sampler settings on that 2-D exact field, 60 steps from 400° to 1°, ρ = 7, ten seeds of 4,000 droplets (α-like / strand / φ above 0): plain 29.4 / 67.0 / 3.6; η = 1.5 alone 15.8 / 84.2 / 0.0; γ₀ = 0.8 alone 28.3 / 69.7 / 2.0; Boltz-2's η, γ₀ and λ 22.3 / 77.3 / 0.4 (rare region between about 0.2 and 0.6 across seeds as run in the game); Boltz-1's 17.8 / 82.1 / 0.1. The burst of noise is 1.50 σ for Boltz-2 and 1.13 σ for Boltz-1, against a cap of 1.0 σ in Karras et al. It undoes part of the contraction from η.
+- Matching a known share on the plane of η and γ₀ is a valley, not a point. For a true 10% on Boltz-2's schedule, it runs from η = 1, γ₀ = 0 to about η = 0.9, γ₀ = 0.5 and η = 0.8, γ₀ = 1. Boltz-2's setting lies far from it, near 2.5%. This is on an exact field, and says nothing about what suits a trained network.
 - On Boltz-2's own range and 200 steps the full preset gives the same 0.4%, η = 1.5 alone gives 0 / 100 / 0, and η = 1.04 halves the rare region. On our 60-step range η near 1.1 halves it. That η depends on where the schedule starts. More steps do not repair it, because η changes the flow. On a torus the η-only effect is far weaker, 1.6% at η = 1.5, while the full preset gives 0.6%. None of this says anything direct about Boltz on any protein, because a trained network errs in other ways and Boltz's loss is aligned.
-- Exact two states on Boltz-2's schedule in Å: 3.4% becomes 0.3%, 10% becomes 2.3%, 30% becomes 20%, whatever the separation above 5 Å. The odds are raised to a power near 1.7, and near 2.2 with Boltz-1's settings. This is our own calculation, not a paper's. It agrees in direction with the Boltz documentation on step scale and temperature.
+- Exact two states on Boltz-2's schedule in Å. With states 10 Å apart, 3.4%, 10% and 30% become 0.29%, 2.2% and 19.6%, and the odds are raised to powers 1.75, 1.73 and 1.67. At the real 119.5 Å between closed and open adenylate kinase they become 0.35%, 2.4% and 19.8%, powers 1.69, 1.69 and 1.65. So the power is near 1.7, or near 2.2 with Boltz-1's settings, and separation changes it a little. An earlier version of this file said it did not change at all above 5 Å, which was too strong. The width of the states does not change it. Whole chains in all 642 coordinates agree with the line within sampling error. This is our own calculation, not a paper's. It agrees in direction with the Boltz documentation on step scale and temperature.
 - Reweighting Boltz-2-setting samples with histogram weights gives about 1% in the rare region with 4,000 droplets, and 1.9% with 40,000, because it only sums p over visited cells.
 
 ### The real Boltz record
 
 From the author's own teaching exercises: Boltz 2.2.1, source commit `b1ebfc46ecf57f5414e0d1a6f9027bbb122c53bc`, seed 42, 20 sampling steps, 1 recycling step. The protein is the 136-residue first sequence of the alignment used there, which is byte-identical to `examples/msa/seq2.a3m` in the Boltz repository. `examples/prot.yaml` itself has 117 residues. These are reduced settings. The stored data are C-alpha coordinates of each noisy and denoised frame, the final structures of seven runs, the base and six variants, per-residue pLDDT, confidence values, and hand counts computed from all atoms. Those are the Boltz results in this game. They come from one protein, and they are the outcome of a quick exercise, not a benchmark.
+
+## How a puzzle chapter is built
+
+A chapter with `puzzle: true` gets the goal line, one line of feedback and the quiet marker of where it sits in the sampler (`place`). Its `stages` are its levels. The old `ui.line`, `ui.choose` and `check` still work for the six chapters that use them.
+
+| Piece | Use |
+|---|---|
+| `run.level(goal, tags)` | Starts a level: the goal, its progress and the tags |
+| `run.board({ at, grab, move, drop, tap, hover, cursor })` | A move on the board, the same with finger and mouse |
+| `run.idle(where)` | A hand shows the move after 6 s with no action |
+| `run.won(line, tier)` and `run.pause(ms)` | The reward, then on by itself. A tap skips the pause |
+| `run.safe(fn)` | An async board handler that leaving the chapter cannot break |
+| `ui.feedback(line, tone)`, `ui.rounds(done, total)`, `ui.pipeline(lit)`, `ui.hand(from, to)` | One line, dots for rounds inside a level, the marker, the hand |
+| `board.setPanel(min, seconds, max)`, `board.panel`, `board.box`, `board.flash(good)`, `board.setSpan(a)` | A board for a molecule, with room under it for a chapter's own panel. `tank` offers the same panel for the map |
+| `new Bundle(run, { n, bonds, K })`, `bundle.draw(X, { atomInk, chainInk, chainMass, strain })` | Several copies of a molecule in one cloud of ink, with red for strained bonds |
+| `pour.run(..., { halt })` | A sampler run that the next move can stop |
+
+Targets and cases live in `src/science/levels.js`, so that `tools/test.mjs` checks the numbers the game plays: that the answer to one level fails the next, and that replays of careless play under the game's own rules rarely pass.
 
 ## Music
 
@@ -119,9 +149,10 @@ Memorising: Biroli et al., Nat Commun 15, 9957 (2024). Standard references not r
 | Data | Source | Licence |
 |---|---|---|
 | 411 high-resolution crystal structures, one per 30% sequence cluster, chosen by a fixed query and shuffle (`tools/fetch_data.mjs`), reduced to φ, ψ and residue type | Protein Data Bank | CC0 |
-| Ubiquitin 2K39, 39 of 116 conformers, heavy atoms | Protein Data Bank | CC0 |
+| Ubiquitin 2K39, 39 of 116 conformers, heavy atoms. The other 77 were used once, outside the game, to check the hidden set | Protein Data Bank | CC0 |
 | Adenylate kinase, E. coli, 51 chains from 28 entries (UniProt P69441), 22 kept, C-alpha | Protein Data Bank | CC0 |
 | Alanine dipeptide MD, 24.0 ns, 2-D biased and reweighted | Made for this game with OpenMM 8.5, ff14SB, TIP3P, `tools/md_alanine.py` | This repository's licence |
+| Alanine dipeptide starting structure, 10 heavy atoms, in `src/science/dipeptide.js` | pdbfixer's `alanine-dipeptide.pdb`, as used for the MD | MIT |
 | A Boltz-2 run | Made by the author with Boltz (MIT) for the author's teaching exercises | This repository's licence |
 
 Fonts, both SIL Open Font License 1.1, bundled from `@fontsource`: Instrument Serif (2022 The Instrument Serif Project Authors) and Ysabeau Office (2023 The Ysabeau Project Authors). three.js is MIT.

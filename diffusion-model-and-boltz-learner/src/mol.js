@@ -1,5 +1,5 @@
 // A molecule in ink: droplets along real bonds, placed from real coordinates, turning slowly.
-import { Cloud, mixPigment } from './world.js';
+import { Cloud, mixPigment, PIGMENT } from './world.js';
 import { makeRng } from './science/rng.js';
 import { axisRotation, compose } from './science/kabsch.js';
 
@@ -61,6 +61,50 @@ export class MolInk {
     }
     cloud.commit(drops);
     void tmp;
+  }
+}
+
+// Several copies of one molecule at once, each with its own coordinates, in one cloud of ink. A droplet belongs to a copy and to a bond.
+export class Bundle {
+  constructor(run, { n, bonds, K = 1, drops = 12000, seed = 5, weight = null, thick = 0.42, mass = 1 }) {
+    Object.assign(this, { run, world: run.world, n, K, drops, thick, massK: mass, bonds });
+    const rng = makeRng(seed), pick = [];
+    bonds.forEach((b, i) => { const k = weight ? weight(b) : 1; for (let q = 0; q < k; q += 1) pick.push(i); });
+    this.A = new Uint16Array(drops); this.B = new Uint16Array(drops); this.C = new Uint16Array(drops); this.L = new Uint16Array(drops); this.T = new Float32Array(drops); this.J = new Float32Array(drops * 3); this.m = new Float32Array(drops);
+    for (let k = 0; k < drops; k += 1) {
+      const l = pick[rng.int(pick.length)], b = bonds[l];
+      this.A[k] = b[0]; this.B[k] = b[1]; this.L[k] = l; this.C[k] = k % K; this.T[k] = rng.u();
+      this.J[3 * k] = rng.n(); this.J[3 * k + 1] = rng.n(); this.J[3 * k + 2] = rng.n();
+      this.m[k] = 0.5 + 0.5 * rng.u();
+    }
+    this.cloud = run.own(new Cloud(this.world, drops));
+    this.R = axisRotation(1, 0.2, 0, 0.3);
+    this.over = PIGMENT.rose;
+  }
+
+  turn(dx, dy) { this.R = compose(compose(axisRotation(0, 1, 0, dx), axisRotation(1, 0, 0, dy)), this.R); }
+
+  hide() { this.cloud.commit(0); }
+
+  // X holds K copies of n atoms. atomInk gives a pigment per atom, or chainInk one per copy. strain, per bond from 0 to 1, pulls the ink toward red.
+  // origin is the point of the molecule to keep at the centre. Copies from count onward are left out.
+  draw(X, { atomInk = null, chainInk = null, strain = null, sigma = 0, count = this.K, origin = [0, 0, 0], mass = 1, stride = 3 * this.n, chainMass = null } = {}) {
+    const { A, B, C, L, T, J, m, drops, cloud, R, thick, over } = this, wob = Math.min(1, sigma / 6);
+    const size = thick + 0.3 * sigma, big = 1 + sigma / 9, Mk = (mass * this.massK * 2 * 0.042 * big * (26000 / drops) * 0.4) / (size * size), jit = 0.03 + 0.34 * sigma;
+    const { pos, ink: I, size: S } = cloud, [ox, oy, oz] = origin;
+    for (let k = 0; k < drops; k += 1) {
+      const c = C[k];
+      if (c >= count) { I[4 * k + 3] = 0; S[k] = 0; pos[3 * k] = 0; pos[3 * k + 1] = 0; pos[3 * k + 2] = 0; continue; }
+      const b0 = c * stride, a = b0 + 3 * A[k], b = b0 + 3 * B[k], t = T[k];
+      const px = X[a] + t * (X[b] - X[a]) + J[3 * k] * jit - ox, py = X[a + 1] + t * (X[b + 1] - X[a + 1]) + J[3 * k + 1] * jit - oy, pz = X[a + 2] + t * (X[b + 2] - X[a + 2]) + J[3 * k + 2] * jit - oz;
+      const rz = R[6] * px + R[7] * py + R[8] * pz;
+      pos[3 * k] = R[0] * px + R[1] * py + R[2] * pz; pos[3 * k + 1] = R[3] * px + R[4] * py + R[5] * pz; pos[3 * k + 2] = rz;
+      const f = strain ? strain[L[k]] : 0, u = atomInk ? 3 * A[k] : 3 * c, src = atomInk ?? chainInk, near = 1 + 0.7 * Math.max(-1, Math.min(1, rz / 16)) * (1 - wob);
+      I[4 * k] = src[u] + f * (over[0] - src[u]); I[4 * k + 1] = src[u + 1] + f * (over[1] - src[u + 1]); I[4 * k + 2] = src[u + 2] + f * (over[2] - src[u + 2]);
+      I[4 * k + 3] = m[k] * Mk * near * (chainMass ? chainMass[c] : 1);
+      S[k] = size;
+    }
+    cloud.commit(drops);
   }
 }
 

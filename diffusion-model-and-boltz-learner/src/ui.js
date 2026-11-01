@@ -4,14 +4,68 @@ const $ = (id) => document.getElementById(id);
 // What a number is. Every screen carries at least one of these.
 export const TAGS = { real: 'Real data', boltz: 'Real Boltz output', game: 'Computed here', model: 'Teaching model', paper: 'From the papers' };
 
+// Where a chapter sits in a diffusion sampler. Quiet on purpose: it orients, and there is nothing to read in it.
+const PIPE = ['noise', 'guess', 'step', 'structure'];
+const HAND = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M11 30c-3-3-6-7-7-10-1-2 1-3 3-2l3 3V6a2.2 2.2 0 0 1 4.4 0v7.6a2.2 2.2 0 0 1 4.3 0v1a2.2 2.2 0 0 1 4.3 0v1a2.2 2.2 0 0 1 4.3 0V23c0 3-1 5-2 7z" fill="#fbfbf8" stroke="#1d2141" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+
 export class UI {
   constructor(game) {
     this.game = game;
     this.say$ = $('say'); this.reads$ = $('reads'); this.ctrl$ = $('ctrl'); this.tags$ = $('tagline');
     this.labels$ = $('labels');
+    this.card$ = $('card'); this.goal$ = $('goal'); this.goalText$ = $('goal-text'); this.goalCount$ = $('goal-count'); this.goalRounds$ = $('goal-rounds'); this.pipe$ = $('pipe');
   }
 
-  clear() { this.say$.innerHTML = ''; this.reads$.innerHTML = ''; this.ctrl$.innerHTML = ''; this.tags$.innerHTML = ''; this.labels$.innerHTML = ''; }
+  clear() {
+    this.say$.innerHTML = ''; this.say$.className = ''; this.reads$.innerHTML = ''; this.ctrl$.innerHTML = ''; this.tags$.innerHTML = ''; this.labels$.innerHTML = '';
+    this.handOff();
+    this.puzzle(false);
+    this.pipeline(null);
+  }
+
+  // A puzzle chapter's card: the goal stays in view, under it one line of feedback.
+  puzzle(on) {
+    this.card$.classList.toggle('puzzle', on);
+    this.goal$.hidden = !on;
+    if (!on) { this.goalText$.textContent = ''; this.goalCount$.textContent = ''; this.goalRounds$.innerHTML = ''; }
+  }
+
+  goal(html, done = null, total = null) {
+    this.goalText$.innerHTML = html;
+    this.goalCount$.textContent = done === null ? '' : `${done} of ${total}`;
+    this.fit();
+  }
+
+  // Dots beside the goal, for the rounds inside one level.
+  rounds(done, total = 0) { this.goalRounds$.innerHTML = Array.from({ length: total }, (_, i) => `<b class="${i < done ? 'on' : ''}"></b>`).join(''); }
+
+  // At most one short line. Tone good or bad colours it. The room for it is reserved, so the board stays still.
+  feedback(html, tone = '') { this.say$.innerHTML = html; this.say$.className = tone; }
+
+  // Lights the steps of the sampler this chapter is about. null hides the marker.
+  pipeline(lit) {
+    this.pipe$.hidden = !lit;
+    this.pipe$.innerHTML = lit ? PIPE.map((t, k) => `<span class="${lit.includes(k) ? 'on' : ''}">${t}</span>`).join('<i></i>') : '';
+  }
+
+  // A small hand that shows what can be moved. from and to are functions, so it follows the board.
+  hand(from, to = from) {
+    this.handOff();
+    const el = this.hand$ = document.createElement('div'), t0 = performance.now(), PERIOD = 2300;
+    el.className = 'hand';
+    el.innerHTML = HAND;
+    this.labels$.append(el);
+    const step = (t) => {
+      if (this.hand$ !== el || !el.isConnected) return;
+      const p = ((t - t0) % PERIOD) / PERIOD, go = Math.min(1, Math.max(0, (p - 0.18) / 0.5)), e = go * go * (3 - 2 * go), a = from(), b = to();
+      el.style.transform = `translate(${a.x + (b.x - a.x) * e - 11}px, ${a.y + (b.y - a.y) * e - 3}px) scale(${p < 0.14 || p > 0.74 ? 1.08 : 0.96})`;
+      el.style.opacity = p < 0.08 ? p / 0.08 : p > 0.86 ? (1 - p) / 0.14 : 1;
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  handOff() { this.hand$?.remove(); this.hand$ = null; }
 
   say(html) { this.say$.innerHTML = html; this.fit(); }
 

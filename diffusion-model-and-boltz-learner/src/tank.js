@@ -22,7 +22,7 @@ export class Tank {
     this.N = drops ?? run.world.dropCount;
     this.cloud = run.own(new Cloud(this.world, this.N));
     this.extra = [];
-    this.zoom = 1;
+    this.zoom = 1; this.below = 0; this.belowMin = 0; this.belowMax = 0;
     this.showMap = true; this.labels = false; this.frameAlpha = 1;
     this.tmp = [0, 0, 0];
     this.fit(0);
@@ -34,13 +34,30 @@ export class Tank {
     this.sx = new Float32Array(this.N); this.sy = new Float32Array(this.N);
   }
 
-  // Fit the map plus any extra room the noise needs.
+  // Fit the map plus any extra room the noise needs. Pixels kept free under the map are a chapter's own panel.
   fit(seconds = 0.6) {
-    const z = this.zoom, cx = 0, cy = 80, h = 180 * z;
-    const s = this.world.stage;
-    const k = Math.min((s.w - 34) / (2 * h), (s.h - 34) / (2 * h));
-    this.world.look(cx, cy, Math.max(k, 1e-3), seconds);
+    const z = this.zoom, cx = 0, cy = 80, h = 180 * z, s = this.world.stage;
+    const b = this.below = s.w > s.h ? (s.h > 760 ? this.belowMax : this.belowMin) : Math.max(this.belowMin, Math.min(this.belowMax, s.h - s.w));
+    const k = Math.max(Math.min((s.w - 34) / (2 * h), (s.h - b - 34) / (2 * h)), 1e-3);
+    this.world.look(cx, cy - b / (2 * k), k, seconds);
   }
+
+  // Keeps pixels under the map for a panel, between min and max as a tall stage allows. The panel's place on screen follows the stage.
+  setPanel(min, seconds = 0.4, max = min) { this.belowMin = min; this.belowMax = max; this.fit(seconds); }
+
+  get panel() {
+    const s = this.world.stage, b = this.below, w = Math.min(s.w - 20, 720);
+    return { x: s.x + (s.w - w) / 2, y: s.y + s.h - b - 2, w, h: b };
+  }
+
+  // The map's rectangle on screen.
+  get mapRect() {
+    const a = this.world.project(MAP.x0, MAP.y1), b = this.world.project(MAP.x1, MAP.y0);
+    return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+  }
+
+  // A brief glow round the map: the board answering a move.
+  flash(good) { this.glow = { t: performance.now(), good }; }
 
   setZoom(z, seconds = 0.5) { if (Math.abs(z - this.zoom) > 0.001) { this.zoom = z; this.fit(seconds); } }
 
@@ -67,7 +84,23 @@ export class Tank {
   clear() { this.cloud.commit(0); }
 
   draw(g) {
-    if (!this.showMap) return;
+    if (this.showMap) this.drawMap(g);
+    for (const f of this.extra) f(g, this.world);
+    if (this.glow) {
+      const t = (performance.now() - this.glow.t) / 650;
+      if (t >= 1) this.glow = null;
+      else {
+        const r = this.mapRect;
+        g.save();
+        g.strokeStyle = this.glow.good ? `rgba(13, 138, 143, ${0.9 * (1 - t)})` : `rgba(194, 24, 91, ${0.9 * (1 - t)})`;
+        g.lineWidth = 2 + 7 * (1 - t);
+        g.strokeRect(r.x - 3 * t, r.y - 3 * t, r.w + 6 * t, r.h + 6 * t);
+        g.restore();
+      }
+    }
+  }
+
+  drawMap(g) {
     const w = this.world, a = w.project(MAP.x0, MAP.y1), b = w.project(MAP.x1, MAP.y0);
     g.save();
     g.strokeStyle = `rgba(${INK}, ${0.3 * this.frameAlpha})`; g.lineWidth = 1;
@@ -99,7 +132,6 @@ export class Tank {
       }
     }
     g.restore();
-    for (const f of this.extra) f(g, w);
   }
 
   // A hairline arrow between two map points.
@@ -140,12 +172,13 @@ export class Pour {
   }
 
   // stepOne(p, i, k) moves point p (Float64Array(2)) for step k of the schedule and leaves the last guess in g.
-  async run(run, sched, stepOne, { seconds = 3, onStep = null, zoomOf = null, mute = 0, boost = 1 } = {}) {
+  // halt() can stop a run between frames. Returns true if the run reached the end.
+  async run(run, sched, stepOne, { seconds = 3, onStep = null, zoomOf = null, mute = 0, boost = 1, halt = null } = {}) {
     const { n, tank } = this, S = sched, steps = S.length - 1, p = new Float64Array(2), g = new Float64Array(2);
     const { x, y, gx, gy, px, py } = this;
     const per = (seconds * 1000) / steps;
     for (let k = 0; k < steps; k += 1) {
-      if (!run.alive) return;
+      if (!run.alive || halt?.()) return false;
       px.set(x); py.set(y);
       const fromG = gx.slice(), fromGy = gy.slice();
       let i = 0;
@@ -155,7 +188,7 @@ export class Pour {
         const end = performance.now() + 7;
         do { p[0] = x[i]; p[1] = y[i]; stepOne(p, g, i, k); x[i] = p[0]; y[i] = p[1]; gx[i] = g[0]; gy[i] = g[1]; i += 1; } while (i < n && (i & 63 || performance.now() < end));
         if (i < n) await run.hold(new Promise(requestAnimationFrame));
-        if (!run.alive) return;
+        if (!run.alive || halt?.()) return false;
       }
       // Ease to the new positions.
       const wait = Math.max(0, per - (performance.now() - t0)), s0 = S[k], s1 = S[k + 1], b0 = Math.max(s1, 0);
@@ -163,7 +196,7 @@ export class Pour {
       const t1 = performance.now();
       for (;;) {
         await run.hold(new Promise(requestAnimationFrame));
-        if (!run.alive) return;
+        if (!run.alive || halt?.()) return false;
         const f = wait > 0 ? Math.min(1, (performance.now() - t1) / wait) : 1;
         for (let j = 0; j < seen; j += 1) { X[j] = px[j] + f * (x[j] - px[j]); Y[j] = py[j] + f * (y[j] - py[j]); GX[j] = fromG[j] + f * (gx[j] - fromG[j]); GY[j] = fromGy[j] + f * (gy[j] - fromGy[j]); }
         const s = Math.exp(Math.log(s0 + 1e-3) + f * (Math.log(b0 + 1e-3) - Math.log(s0 + 1e-3)));
@@ -174,6 +207,7 @@ export class Pour {
       }
       onStep?.(k, s1);
     }
+    return true;
   }
 }
 

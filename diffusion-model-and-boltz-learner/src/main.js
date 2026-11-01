@@ -43,7 +43,12 @@ class Game {
       store(this.save);
       this.open(i);
     });
-    $('done-again').addEventListener('click', () => { $('done').hidden = true; });
+    $('done-again').addEventListener('click', () => {
+      $('done').hidden = true;
+      const chapter = this.current?.chapter;
+      // A puzzle chapter has no board left to stay on, so it starts again from level 1.
+      if (chapter?.puzzle) this.open(CHAPTERS.indexOf(chapter));
+    });
     $('done-next').addEventListener('click', () => {
       $('done').hidden = true;
       const i = CHAPTERS.indexOf(this.current?.chapter);
@@ -124,6 +129,7 @@ class Game {
     this.paintDrops(chapter);
     const run = this.current = new Run(this, chapter);
     this.sound.setSigma(0);
+    if (chapter.puzzle) { this.ui.puzzle(true); this.ui.pipeline(chapter.place); }
     this.layout(true);
     try {
       await chapter.setup?.(run);
@@ -160,7 +166,12 @@ class Game {
     $('done-drops').innerHTML = dropIcons(t);
     $('done-title').textContent = chapter.title;
     $('done-principle').textContent = chapter.principle;
+    $('done-caveat').textContent = chapter.caveat ?? '';
+    $('done-caveat').hidden = !chapter.caveat;
+    $('done-prompt').textContent = chapter.puzzle ? 'Say it in your own words.' : 'Now try saying that to a friend, in your own words, without looking.';
+    $('done-goals').hidden = !!chapter.puzzle;
     $('done-goals').innerHTML = chapter.goals.map((g, k) => `${k < t ? 'Done' : 'Not yet'}: ${g}`).join('<br>');
+    $('done-again').textContent = chapter.puzzle ? 'Play again' : 'Stay here';
     $('done-next').textContent = i + 1 < CHAPTERS.length ? 'Next chapter' : 'All chapters';
     $('done').hidden = false;
   }

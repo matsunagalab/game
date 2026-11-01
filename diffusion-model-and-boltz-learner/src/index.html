@@ -38,6 +38,8 @@
     <button class="icon" data-sound aria-label="Sound"></button>
   </header>
   <div id="card">
+    <div id="pipe" aria-hidden="true" hidden></div>
+    <div id="goal" hidden><span id="goal-text"></span><span id="goal-rounds" aria-hidden="true"></span><span id="goal-count"></span></div>
     <div id="tagline"></div>
     <p id="say" aria-live="polite"></p>
     <div id="reads"></div>
@@ -46,7 +48,7 @@
 </section>
 
 <div id="note" class="over" hidden><div class="sheet"><div id="note-body"></div><div class="row"><button id="note-restart" class="btn quiet">Start chapter again</button><button id="note-close" class="btn">Close</button></div></div></div>
-<div id="done" class="over" hidden><div class="sheet"><div id="done-drops" class="drop-big"></div><h3 id="done-title"></h3><p id="done-principle"></p><p class="small"><i>Now try saying that to a friend, in your own words, without looking.</i></p><p id="done-goals" class="small"></p><div class="row"><button id="done-again" class="btn quiet">Stay here</button><button id="done-next" class="btn">Next chapter</button></div></div></div>
+<div id="done" class="over" hidden><div class="sheet"><div id="done-drops" class="drop-big"></div><h3 id="done-title"></h3><p id="done-principle"></p><p id="done-caveat" class="small" hidden></p><p class="small"><i id="done-prompt">Now try saying that to a friend, in your own words, without looking.</i></p><p id="done-goals" class="small"></p><div class="row"><button id="done-again" class="btn quiet">Stay here</button><button id="done-next" class="btn">Next chapter</button></div></div></div>
 <script>/*JS*/</script>
 </body>
 </html>

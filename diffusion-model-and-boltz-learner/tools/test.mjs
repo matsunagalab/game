@@ -2,21 +2,25 @@
 import assert from 'node:assert/strict';
 import { Mix2D, FieldTable } from '../src/science/mix2d.js';
 import { makeRng } from '../src/science/rng.js';
-import { boltzSchedule, churnHeun, edm, euler, heun, schedule, stochasticStep } from '../src/science/sampler.js';
+import { boltzSchedule, churnHeun, edm, euler, heun, ladderStep, schedule, stochasticStep } from '../src/science/sampler.js';
 import { MLP } from '../src/science/mlp.js';
 import { DenoiserNet } from '../src/science/net.js';
 import { bestRotation, centre, fitRmsd, randomRotation, rmsd, rotate, shift } from '../src/science/kabsch.js';
-import { Ensemble, rg } from '../src/science/cart.js';
+import { Aligned, Ensemble, rg } from '../src/science/cart.js';
+import { bondError, bondLengths, scanNow, squared } from '../src/science/blur.js';
+import { BONDS, conformer, dihedral, DIHEDRALS } from '../src/science/dipeptide.js';
 import { heldOutBits, histogramModel, island, popError, populations, sliced } from '../src/science/stats.js';
 import { adk, boltzRun, byAA, mdRun, rama, ubiquitin } from '../src/science/data.js';
 import { discEnergy, steerRun } from '../src/science/steer.js';
 import { place, piece, snap, NOISE } from '../src/music.js';
 import { HandTest } from '../src/science/hand.js';
-import { noiseBurst, oddsPower, PRESETS, runTwoState } from '../src/science/twostate.js';
+import { chainField, noiseBurst, oddsPower, PRESETS, runChains, runTwoState, twoField } from '../src/science/twostate.js';
+import { adkSplit, BLUR, conformerSplit, everyFourth, ladderOf, logit, oddsMiss, PAD, padOpt, rareSet, slotSigma, STOPS, TWO, twoOpt } from '../src/science/levels.js';
 
 let passed = 0;
 const ok = (name, f) => { f(); passed += 1; console.log(`ok  ${name}`); };
 const near = (a, b, tol, what = '') => assert.ok(Math.abs(a - b) <= tol, `${what} ${a} vs ${b} (tol ${tol})`);
+const near2 = near;
 
 ok('exact denoiser equals the score of a Gaussian mixture, checked by finite differences (Tweedie)', () => {
   const r = makeRng(1), n = 200, x = new Float32Array(n), y = new Float32Array(n);
@@ -152,6 +156,14 @@ ok('held-out score of the histogram: peaks in the middle, overfit at the fine en
   assert.ok(b > a && b > c && ct > b, `${a} ${b} ${c} ${ct}`);
 });
 
+ok('held-out score of the histogram: a tenth of the data moves the best cell further than it moves a blur', () => {
+  const { train, test } = rama(), W = [20, 15, 12, 10, 7.5, 6, 5, 4], r = makeRng(5), few = { x: new Float32Array(800), y: new Float32Array(800) };
+  for (let i = 0; i < 800; i += 1) { const k = r.int(train.x.length); few.x[i] = train.x[k]; few.y[i] = train.y[k]; }
+  const best = (d) => W.reduce((b, w) => (heldOutBits(histogramModel(d, w, 0.02), test) > heldOutBits(histogramModel(d, b, 0.02), test) ? w : b));
+  console.log(`    best cell ${best(train)} with 8,000, ${best(few)} with 800`);
+  assert.ok(best(train) <= 7.5 && best(few) >= 10);
+});
+
 ok('population estimates: island labels and the population error', () => {
   assert.equal(island(-60, -40), 0); assert.equal(island(-120, 130), 1); assert.equal(island(60, 40), 2);
   const p = populations(Float32Array.from([-60, -60, -120, 60]), Float32Array.from([-40, -30, 130, 40]));
@@ -194,19 +206,6 @@ ok('data: counts and basic geometry', () => {
 });
 
 // Numbers that the chapters state in words. If these fail, the sentences on screen have gone stale.
-ok('sentences on screen: samplers on the real field (chapter 4)', () => {
-  const d = rama().train, m = new Mix2D(d.x, d.y).index(4), T = new FieldTable(m, { low: 5, high: 800, levels: 20, grid: 96 }).ready(), D = (x, s, o) => T.at(x[0], x[1], s, o), N = 2500;
-  const run = (kind, steps) => {
-    const S = schedule(steps, 1, 400, 7), r = makeRng(11), X = new Float32Array(N), Y = new Float32Array(N), x = new Float64Array(2), b = new Float64Array(2), tmp = new Float64Array(4);
-    let calls = 0;
-    for (let i = 0; i < N; i += 1) { x[0] = -84 + 400 * r.n(); x[1] = 42 + 400 * r.n(); let c = 0; for (let k = 0; k < steps; k += 1) { if (kind === 'heun') c += heun(x, S[k], S[k + 1], D, b, 2, tmp); else { euler(x, S[k], S[k + 1], D, b); c += 1; } } calls = c; X[i] = x[0]; Y[i] = x[1]; }
-    return { calls, dist: sliced(X, Y, d.x, d.y), p: populations(X, Y) };
-  };
-  const h3 = run('heun', 3), e3 = run('euler', 3), h12 = run('heun', 12), e30 = run('euler', 30), e20 = run('euler', 20);
-  console.log(`    heun 3 ${h3.dist.toFixed(1)}, euler 3 ${e3.dist.toFixed(1)}, heun 12 (${h12.calls} calls) ${h12.dist.toFixed(2)}, euler 20 ${e20.dist.toFixed(2)}, euler 30 ${e30.dist.toFixed(2)}`);
-  assert.ok(h3.dist > e3.dist); assert.ok(h12.calls <= 24 && h12.dist <= 1.6); assert.ok(e20.dist > 1.6);
-});
-
 ok('guidance identity: conditional score = plain score + slope of log p(c | x)', () => {
   const a = byAA('G'), g0 = rama().train, all = new Mix2D(Float32Array.from([...g0.x, ...a.x]), Float32Array.from([...g0.y, ...a.y])), G = new Mix2D(a.x, a.y), o = [0, 0], s = 30, x = 40, y = 100, h = 0.02, pc = a.x.length / all.n;
   const logC = (px, py) => Math.log(pc) + G.logp(px, py, s) - all.logp(px, py, s);
@@ -232,7 +231,7 @@ function sample9(opt, { seed = 1, n = 4000, meas = 4000, steps = 60, smax = 400,
   const Dx = D ?? ((x, s, o) => F.at(x[0], x[1], s, o)), Df = D ?? ((x, s, o) => F.fast(x[0], x[1], s, o));
   for (let i = 0; i < n; i += 1) { X[i] = F.mix.mx + S[0] * rng.n(); Y[i] = F.mix.my + S[0] * rng.n(); }
   for (let k = 0; k + 1 < S.length; k += 1) for (let i = 0; i < n; i += 1) { p[0] = X[i]; p[1] = Y[i]; stochasticStep(p, S[k], S[k + 1], i < meas ? Dx : Df, g, rng, opt); X[i] = p[0]; Y[i] = p[1]; }
-  const a = Float32Array.from(X.subarray(0, meas)), b = Float32Array.from(Y.subarray(0, meas));
+  const a = Float32Array.from(X.subarray(0, meas || n)), b = Float32Array.from(Y.subarray(0, meas || n));
   return { X: a, Y: b, pop: populations(a, b) };
 }
 const meanPop = (opt, seeds, args = {}) => { const r = seeds.map((s) => sample9(opt, { seed: s, ...args }).pop); return [0, 1, 2].map((c) => r.reduce((a, b) => a + b[c], 0) / r.length); };
@@ -258,7 +257,7 @@ ok('chapter 9: ten seeds at 60 steps, each setting alone and together', () => {
 });
 
 ok('chapter 9: the game seed lies within one standard deviation of 12 seeds, and the range in the note', () => {
-  const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], game = 9, row = (o) => seeds.map((s) => sample9(o, { seed: s, n: 9000 }).pop[2]);
+  const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], game = PAD.seed, row = (o) => seeds.map((s) => sample9(o, { seed: s, n: PAD.drops, meas: 0 }).pop[2]);
   const z = (r) => { const m = r.reduce((a, b) => a + b, 0) / r.length, d = Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / (r.length - 1)); return (r[seeds.indexOf(game)] - m) / d; };
   const P = row(plainOpt), N = row(gamOpt), B = row(b2Opt);
   console.log(`    seed ${game}: z ${z(P).toFixed(1)} ${z(N).toFixed(1)} ${z(B).toFixed(1)}; Boltz-2 rare ${(100 * Math.min(...B)).toFixed(2)} to ${(100 * Math.max(...B)).toFixed(2)}`);
@@ -384,12 +383,195 @@ ok('chapter 7: the closed share does not depend on the step count', () => {
   near(s36, s144, 0.12);
 });
 
-ok('chapter 4: seeds in the note', () => {
-  const d = rama().train, m = new Mix2D(d.x, d.y).index(4), T = new FieldTable(m, { low: 5, high: 800, levels: 20, grid: 96 }).ready(), D = (x, s, o) => T.at(x[0], x[1], s, o), N = 4000;
-  const run = (kind, steps, seed) => { const S = schedule(steps, 1, 400, 7), r = makeRng(seed), X = new Float32Array(N), Y = new Float32Array(N), x = new Float64Array(2), b = new Float64Array(2), tmp = new Float64Array(4); for (let i = 0; i < N; i += 1) { x[0] = -84 + 400 * r.n(); x[1] = 42 + 400 * r.n(); for (let k = 0; k < steps; k += 1) { if (kind === 'heun') heun(x, S[k], S[k + 1], D, b, 2, tmp); else euler(x, S[k], S[k + 1], D, b); } X[i] = x[0]; Y[i] = x[1]; } return sliced(X, Y, d.x, d.y); };
-  const E = [11, 12, 13, 14, 15].map((s) => run('euler', 35, s)), H = [11, 12, 13, 14, 15].map((s) => run('heun', 12, s));
-  console.log(`    euler 35: ${E.map((v) => v.toFixed(2)).join(' ')}; heun 12: ${H.map((v) => v.toFixed(2)).join(' ')}`);
-  near(E[0], 1.56, 0.1); assert.ok(H[0] <= 1.6); assert.ok(Math.min(...E.slice(1)) >= 2.05 && Math.max(...E.slice(1)) <= 2.65); assert.ok(Math.min(...H.slice(1)) >= 1.05 && Math.max(...H.slice(1)) <= 2.25);
+ok('chapter 1: the blur scores what the note says, and the answer to one level fails the next', () => {
+  const W = BLUR.widths, U = ubiquitin(), K = adk(), run = (sp, M) => scanNow(sp.stored.map((i) => M[i]), sp.hidden.map((i) => M[i]), W), near = (r) => r.list.filter((c) => c.hidden >= r.list[r.best].hidden - BLUR.near).map((c) => c.w);
+  const one = run(everyFourth(39), U.models), few = run(conformerSplit(39, BLUR.few), U.models), A = run(adkSplit(K, BLUR.adkHide), K.models), B = run(conformerSplit(39, BLUR.some), U.models);
+  console.log(`    best ${W[one.best]} (${near(one)}), 4 stored ${W[few.best]} (${near(few)}), kinase ${W[A.best]} (${near(A)}), 12 stored ${W[B.best]} (${near(B)}); spacing ${one.spacing.toFixed(2)} ${few.spacing.toFixed(2)} ${A.spacing.toFixed(2)} ${B.spacing.toFixed(2)}`);
+  assert.deepEqual(near(one), [1, 1.2]); assert.deepEqual(near(few), [1.5]);
+  for (const w of near(one)) assert.ok(!near(few).includes(w), 'the first answer must fail with less data');
+  for (const w of near(A)) assert.ok(!near(B).includes(w), 'one width must not fit both cases of level 3');
+  assert.ok(one.list.every((c, i) => i === 0 || c.stored <= one.list[i - 1].stored + 1e-9), 'the stored score only falls as the width grows');
+  near2(one.list[4].hidden, -218.9, 1, 'hidden score at 0.1 A');
+  // The rule in the note, on every case.
+  for (const r of [one, A]) { const rule = r.spacing / Math.sqrt(3); assert.ok(Math.abs(Math.log(rule / W[r.best])) < 0.2, `rule ${rule} best ${W[r.best]}`); }
+  // Hidden by PDB entry: no chain of a hidden entry is stored.
+  const sp = adkSplit(K, BLUR.adkHide); assert.equal(sp.stored.length, 17); assert.equal(sp.hidden.length, 5);
+  for (const i of sp.hidden) for (const j of sp.stored) assert.notEqual(K.ids[i].slice(0, 4), K.ids[j].slice(0, 4));
+});
+
+ok('chapter 1: the peak has broken bonds, and the hidden set is stable', () => {
+  const U = ubiquitin(), n = U.n, r = makeRng(5), bonds = []; const a = U.models[0];
+  for (let i = 0; i < n; i += 1) for (let j = i + 1; j < Math.min(n, i + 14); j += 1) if (Math.hypot(a[3 * i] - a[3 * j], a[3 * i + 1] - a[3 * j + 1], a[3 * i + 2] - a[3 * j + 2]) < 1.95) bonds.push([i, j]);
+  const ref = bondLengths(a, bonds), err = (s) => { const y = new Float64Array(a); for (let i = 0; i < y.length; i += 1) y[i] += s * r.n(); return bondError(y, bonds, ref); };
+  const real = (() => { let e = 0, c = 0; for (const b of bonds) { const v = U.models.map((m) => Math.hypot(m[3 * b[0]] - m[3 * b[1]], m[3 * b[0] + 1] - m[3 * b[1] + 1], m[3 * b[0] + 2] - m[3 * b[1] + 2])), m = v.reduce((p, q) => p + q) / v.length; for (const q of v) { e += (q - m) ** 2; c += 1; } } return Math.sqrt(e / c); })();
+  console.log(`    bonds off ${err(0.05).toFixed(2)} at 0.05 A, ${err(1).toFixed(2)} at 1 A; real conformers vary by ${real.toFixed(3)}`);
+  near2(err(1), 1.5, 0.25, 'bond error at the peak'); near2(err(0.05), 0.07, 0.02); near2(real, 0.006, 0.002);
+  const W = BLUR.widths, peak = [0, 1, 2, 3].map((off) => { const all = U.models.map((_, i) => i); return W[scanNow(all.filter((i) => i % 4 !== off).map((i) => U.models[i]), all.filter((i) => i % 4 === off).map((i) => U.models[i]), W).best]; });
+  console.log(`    the four ways of hiding every fourth conformer peak at ${peak}`);
+  for (const p of peak) assert.ok(p === 1 || p === 1.2);
+  // The order of the file does not leak: neighbours in it are no closer than strangers.
+  const D = (g) => { let t = 0, c = 0; for (let i = 0; i + g < 39; i += 1) { t += fitRmsd(U.models[i], U.models[i + g]); c += 1; } return t / c; };
+  assert.ok(Math.abs(D(1) - D(10)) < 0.3, `${D(1)} ${D(10)}`);
+});
+
+ok('chapter 1: a careless player rarely passes level 3, and following the feedback does', () => {
+  const W = BLUR.widths, U = ubiquitin(), K = adk(), r = makeRng(8), M = 19;
+  const cases = [scanNow(...(() => { const s = adkSplit(K, BLUR.adkHide); return [s.stored.map((i) => K.models[i]), s.hidden.map((i) => K.models[i])]; })(), W), scanNow(...(() => { const s = conformerSplit(39, BLUR.some); return [s.stored.map((i) => U.models[i]), s.hidden.map((i) => U.models[i])]; })(), W)];
+  const hit = (c, k) => c.list[k].hidden >= c.list[c.best].hidden - BLUR.near;
+  let won = 0; const games = 20000;
+  for (let g = 0; g < games; g += 1) { let at = 0; for (let m = 0; m < 8 && at < 2; m += 1) at = hit(cases[at], r.int(M)) ? at + 1 : 0; if (at === 2) won += 1; }
+  console.log(`    eight random drops pass level 3 in ${(100 * won / games).toFixed(1)}% of games`);
+  assert.ok(won / games < 0.08);
+  for (const c of cases) { let lo = 0, hi = M - 1, k = W.indexOf(3), t = 0, good = false; while (t < 7 && !good) { t += 1; if (hit(c, k)) good = true; else { if (k < c.best) lo = k + 1; else hi = k - 1; k = (lo + hi) >> 1; } } assert.ok(good && t <= 6, 'following too narrow and too wide finds it'); }
+});
+
+ok('the exact field in the span equals the full sum, in all coordinates', () => {
+  const U = ubiquitin(), F = new Aligned(U.models), r = makeRng(9), x = new Float64Array(F.dim), full = new Float64Array(F.dim), o = new Float64Array(F.P), back = new Float64Array(F.dim), zero = new Float64Array(F.dim);
+  assert.equal(F.P, 38);
+  for (const s of [40, 8, 3, 0.8]) {
+    for (let i = 0; i < F.dim; i += 1) x[i] = U.models[7][i] + s * r.n();
+    const q = 1 / (2 * s * s), d = U.models.map((y) => squared(x, y)), lo = Math.min(...d), w = d.map((v) => Math.exp(-(v - lo) * q)), t = w.reduce((a, b) => a + b);
+    full.fill(0); U.models.forEach((y, m) => { for (let i = 0; i < F.dim; i += 1) full[i] += (w[m] / t) * y[i]; });
+    F.denoise(F.project(x), s, o); F.expand(o, 0, zero, back);
+    for (let i = 0; i < F.dim; i += 50) near(back[i], full[i], 1e-6, `coordinate ${i} at ${s}`);
+  }
+  // Models come back from their own coordinates, and the nearest of a model is itself.
+  const c = F.project(U.models[11]); F.expand(c, 0, zero, back); near(Math.sqrt(squared(back, U.models[11]) / F.n), 0, 1e-8); assert.equal(F.nearest(c).m, 11);
+});
+
+// Chapter 4, in the same order as the game: every sample takes step k before any takes step k + 1, on the exact field of real structures.
+const fields = {};
+const rareField = () => (fields.rare ??= (() => { const K = adk(), ids = rareSet(K); return { F: new Aligned(ids.map((i) => K.models[i])), state: ids.map((i) => K.state[i]) }; })());
+const ubqField = () => (fields.ubq ??= { F: new Aligned(ubiquitin().models) });
+function ladderRun({ F, state }, slots, seconds = [], { gamma = 0, N = STOPS.samples } = {}) {
+  const { P } = F, L = ladderOf(slots, seconds), S0 = L[0].s, seed = makeRng(STOPS.seed), noise = makeRng(STOPS.seed + 1), c = new Float64Array(N * P), p = new Float64Array(P), g = new Float64Array(P), tmp = new Float64Array(2 * P), D = (a, s, o) => F.denoise(a, s, o);
+  L[L.length - 1].second = false;
+  for (let i = 0; i < N * P; i += 1) c[i] = S0 * seed.n();
+  let calls = 0;
+  for (let k = 0; k < L.length; k += 1) { let used = 0; for (let i = 0; i < N; i += 1) { const b = i * P; for (let q = 0; q < P; q += 1) p[q] = c[b + q]; used = ladderStep(p, L, k, D, g, noise, gamma, P, tmp); for (let q = 0; q < P; q += 1) c[b + q] = p[q]; } calls += used; }
+  let rm = 0, up = 0;
+  for (let i = 0; i < N; i += 1) { const q = F.nearest(c, i * P); rm += q.rmsd; if (state && state[q.m] === 0) up += 1; }
+  return { calls, rmsd: rm / N, open: up / N };
+}
+const nearestSlot = (s) => { let b = 0; for (let i = 0; i < STOPS.slots; i += 1) if (Math.abs(Math.log(slotSigma(i) / s)) < Math.abs(Math.log(slotSigma(b) / s))) b = i; return b; };
+const slotsOf = (list) => list.map(nearestSlot);
+const TRUTH = 2 / 17, hits = (r) => Math.abs(r.open - TRUTH) <= STOPS.band && r.rmsd <= STOPS.blur;
+
+ok('a ladder step is the textbook step: Euler, Heun, none on the last, and fresh noise lifts the point', () => {
+  const D = (x, s, o) => { o[0] = 0.5 * x[0]; o[1] = -x[1]; }, r = makeRng(1), g = new Float64Array(2), a = new Float64Array([3, 4]), b = new Float64Array([3, 4]);
+  const L = [{ s: 10, second: false }, { s: 7, second: true }, { s: 4, second: true }];
+  assert.equal(ladderStep(a, L, 0, D, g, r), 1); euler(b, 10, 7, D, g); near(a[0], b[0], 1e-12);
+  assert.equal(ladderStep(a, L, 1, D, g, r), 2); assert.equal(ladderStep(new Float64Array([1, 1]), L, 2, D, g, r), 1);
+  const q = new Float64Array([0, 0]), s2 = []; for (let i = 0; i < 20000; i += 1) { q[0] = 0; q[1] = 0; ladderStep(q, [{ s: 1, second: false }, { s: 1e-9, second: false }], 0, (x, s, o) => { o[0] = x[0]; o[1] = x[1]; }, g, r, 0.8); s2.push(q[0]); }
+  near(Math.sqrt(s2.reduce((t, v) => t + v * v, 0) / s2.length), Math.sqrt(1.8 * 1.8 - 1), 0.03, 'fresh noise lifts sigma to sigma(1 + gamma)');
+});
+
+ok('chapter 4, level 1: one fold forgives the ladder, and only a high last stop blurs it', () => {
+  const U = ubqField(), r = (s) => ladderRun(U, s, [], { N: 48 }), f = STOPS.first, good = r(slotsOf([200, 100, 50, 25, 10, 2])), two = r(slotsOf([200, 2])), bad = r(f);
+  console.log(`    first stops ${bad.rmsd.toFixed(2)} A from a conformer; two stops ${two.rmsd.toFixed(3)}; six reasoned ${good.rmsd.toFixed(3)}`);
+  assert.ok(bad.rmsd > 2 * STOPS.crisp); assert.ok(good.rmsd < 0.02 && two.rmsd < 0.1);
+});
+
+ok('chapter 4, levels 2 and 3: what the calls buy, on the game seed', () => {
+  const R = rareField(), t = STOPS, go = (l, s, o) => ladderRun(R, slotsOf(l), s, o), N = (r) => `${(100 * r.open).toFixed(1)}/${r.rmsd.toFixed(2)}`;
+  assert.equal(TRUTH, R.state.filter((v) => v === 0).length / R.state.length);
+  const plain = [[200, 74, 45, 27, 0.8], [200, 60, 30, 12, 2], [200, 100, 45, 20, 3]].map((l) => go(l)), looks = [go([200, 45, 27, 0.6], [1, 0, 0, 0]), go([200, 57, 27, 1.1], [1, 0, 0, 0]), go([200, 45, 16, 1.7], [1, 0, 0, 0])], missed = go([200, 95, 27, 1.1], [1, 0, 0, 0]);
+  console.log(`    5 calls, plain ${plain.map(N).join(' ')}; with looks ${looks.map(N).join(' ')}`);
+  for (const r of plain) assert.ok(!hits(r), 'plain stops must not reach the level 2 target');
+  for (const r of looks) { assert.ok(r.calls <= t.budget[1]); assert.ok(hits(r), `a reasoned ladder must pass: ${N(r)}`); }
+  assert.ok(!hits(missed), 'a look alone is not enough: the stop must sit where chains decide');
+  const G = { gamma: t.noise }, old = [go([200, 45, 27, 0.6], [1, 0, 0, 0], G), go([200, 57, 27, 1.1], [1, 0, 0, 0], G)], euler7 = go([200, 74, 45, 35, 21, 13, 1.4], [], G), rich = [go([200, 57, 27, 3.7], [1, 1, 1, 0], G), go([200, 45, 27, 3.7], [1, 1, 1, 0], G), go([200, 45, 21, 3.7], [1, 1, 1, 0], G)];
+  console.log(`    under noise: level 2 ladders ${old.map(N).join(' ')}; Euler 7 calls ${N(euler7)}; with looks ${rich.map(N).join(' ')}`);
+  for (const r of old) assert.ok(!hits(r), 'the level 2 answer must fail under noise'); assert.ok(!hits(euler7));
+  for (const r of rich) { assert.ok(r.calls <= t.budget[2]); assert.ok(hits(r), `a reasoned ladder must pass: ${N(r)}`); }
+  const long = ladderRun(R, Array.from({ length: 25 }, (_, i) => i), [], { N: 2000 }); console.log(`    25 Euler stops ${N(long)}`); assert.ok(long.open > 0.09);
+});
+
+ok('chapter 4: a careless player rarely passes levels 2 and 3, under the game rules', () => {
+  const R = rareField(), r = makeRng(4), calls = (s) => s.reduce((t, p, i) => t + 1 + (p.second && i + 1 < s.length ? 1 : 0), 0), tidy = (s) => { s.sort((p, q) => p.slot - q.slot); s[s.length - 1].second = false; return s; };
+  const free = (s, want, skip) => { for (let d = 0; d < STOPS.slots; d += 1) for (const q of [want - d, want + d]) if (q >= 1 && q < STOPS.slots && !s.some((p) => p !== skip && p.slot === q)) return q; return want; };
+  const drag = (s0, budget) => { const s = s0.map((p) => ({ ...p })), spare = budget - calls(s); if (spare > 0 && r.u() < 0.5) { const x = r.int(STOPS.slots), q = s.find((p) => p.slot === x); if (q) q.second = q !== s[s.length - 1]; else s.push({ slot: free(s, x), second: false }); } else { const p = s[1 + r.int(s.length - 1)]; p.slot = free(s, r.int(STOPS.slots), p); } return tidy(s); };
+  const walks = (start, budget, gamma) => { let won = 0; const W = 80; for (let w = 0; w < W; w += 1) { let s = start.map((slot) => ({ slot, second: false })), hit = false; for (let k = 0; k < 10 && !hit; k += 1) { s = drag(s, budget); hit = hits(ladderRun(R, s.map((p) => p.slot), s.map((p) => p.second), { N: 1500, gamma })); } if (hit) won += 1; } return won / W; };
+  const a = walks(STOPS.second, STOPS.budget[1], 0), b = walks(STOPS.thirdFirst, STOPS.budget[2], STOPS.noise);
+  console.log(`    ten careless drags pass level 2 ${(100 * a).toFixed(0)}%, level 3 ${(100 * b).toFixed(0)}%`);
+  assert.ok(a < 0.3 && b < 0.2);
+});
+
+ok('chapter 9: the stored field to the end gives the exact shares, and the three rounds say what the note says', () => {
+  const F = mdField(), fast = (x, s, o) => F.fast(x[0], x[1], s, o), seeds = [1, 2, 3, 4], at = (e, g, arg = {}) => meanPop(padOpt(e, g), seeds, { n: 3000, ...arg });
+  for (const [e, g] of [[1, 0], [1.5, 0], [1, 0.8], [1.5, 0.8]]) { const a = at(e, g), b = at(e, g, { D: fast }); a.forEach((v, c) => near(v, b[c], c === 2 ? 0.002 : 0.004, `stored field against exact, ${e} ${g} region ${c}`)); }
+  const game = (e, g) => sample9(padOpt(e, g), { seed: PAD.seed, n: PAD.drops, meas: 0, D: fast }).pop, pp = (p) => p.map((v) => (100 * v).toFixed(1)).join('/'), [a, b, c] = PAD.rounds.map((r) => game(r.eta, r.gamma));
+  console.log(`    eta alone ${pp(a)}, noise alone ${pp(b)}, Boltz-2 ${pp(c)}`);
+  near(a[2], 0, 0.002); near(b[2], 0.02, 0.005); near(c[2], 0.004, 0.003);
+  const t = PAD.guess, truth = [0, 0.02, 0.004], chance = (v) => (Math.min(0.1, v + t) - Math.max(0, v - t)) / 0.1, q = truth.map(chance), two = q[0] * q[1] * (1 - q[2]) + q[0] * (1 - q[1]) * q[2] + (1 - q[0]) * q[1] * q[2] + q[0] * q[1] * q[2];
+  console.log(`    random guesses pass two of three with chance ${(100 * two).toFixed(1)}%`);
+  assert.ok(two < 0.07);
+});
+
+const twoChains = () => { const K = adk(); return { a: K.models[K.ids.indexOf(TWO.closed)], b: K.models[K.ids.indexOf(TWO.open)] }; };
+
+ok('chapter 9: real chains on the line are the exact two-state run, and the numbers agree with the earlier calculation', () => {
+  const { a, b } = twoChains(), dim = a.length, w = TWO.width, d = Math.sqrt(squared(a, b));
+  near(d, 119.49, 0.01, 'distance between the two chains in their frame');
+  // The field of real chains, and the field on the line, are one field.
+  const line = twoField({ p: 0.1, d, w }), full = chainField({ p: 0.1, a, b, w }), r = makeRng(3), x = new Float64Array(dim), o = new Float64Array(dim), u = new Float64Array(1), g = new Float64Array(1), e = Float64Array.from(a, (v, i) => (b[i] - v) / d);
+  for (const s of [200, 30, 5, 1]) {
+    for (let i = 0; i < dim; i += 1) x[i] = a[i] + (60 + s * r.n()) * e[i] + s * r.n() * 0.2;
+    u[0] = 0; for (let i = 0; i < dim; i += 1) u[0] += (x[i] - a[i]) * e[i];
+    line(u, s, g); full(x, s, o);
+    let along = 0; for (let i = 0; i < dim; i += 1) along += (o[i] - a[i]) * e[i];
+    near(along, g[0], 1e-6, 'guess along the line');
+  }
+  // The written-out step and the shared step are one run. Separation changes the result a little: the earlier statement that it does not was too strong.
+  const P = PRESETS.boltz2, mean = (f) => (f(1) + f(2) + f(3)) / 3, N = 60000, shares = [0.034, 0.1, 0.3].map((p) => [p, mean((k) => runChains({ p, a, b, w, N, seed: 10 * k }))]), ten = mean((k) => runTwoState({ p: 0.1, n: N, seed: k })), same = mean((k) => runTwoState({ p: 0.1, d, w, n: N, seed: 20 + k }));
+  console.log(`    at ${d.toFixed(1)} A: ${shares.map(([p, q]) => `${(100 * p).toFixed(1)}% to ${(100 * q).toFixed(2)}%, power ${oddsPower(p, q).toFixed(2)}`).join('; ')}; shared step ${(100 * same).toFixed(2)}; at 10 A ${(100 * ten).toFixed(2)}`);
+  near(shares[1][1], same, 0.0025, 'written-out step against the shared step');
+  near(shares[0][1], 0.0035, 0.0006); near(shares[1][1], 0.024, 0.002); near(shares[2][1], 0.198, 0.004); near(ten, 0.022, 0.002);
+  for (const [p, q] of shares) near(oddsPower(p, q), 1.67, 0.05);
+  for (const q of [0.1, 1]) near(runTwoState({ p: 0.1, d, w: q, n: 40000, seed: 5 }), same, 0.003, `width ${q}`);
+  // Whole chains in all 642 coordinates are the same run again.
+  const K = 900, X = new Float64Array(K * dim), c = runChains({ p: 0.1, a, b, w, N: 0, K, X, seed: 4 }), se = Math.sqrt(c * (1 - c) / K);
+  console.log(`    ${K} whole chains: ${(100 * c).toFixed(2)} +- ${(100 * se).toFixed(2)}%`);
+  near(c, shares[1][1], 3.5 * se, 'whole chains against the line');
+  assert.equal(P.eta, 1.5);
+});
+
+ok('chapter 9, level 1: the truth is a valley on the pad, Boltz-2 is far from it, and random places rarely match', () => {
+  const { a, b } = twoChains(), go = (e, g, N = TWO.drops) => runChains({ p: TWO.share, a, b, w: TWO.width, N, K: 0, opt: twoOpt(e, g), seed: 5 }), ok1 = (v) => Math.abs(v - TWO.share) <= TWO.tol;
+  const plain = go(1, 0), mid = go(0.9, 0.5), far = go(0.8, 1), boltz = go(1.5, 0.8), start = go(...TWO.start), noise = go(1, 0.8), step = go(1.5, 0);
+  console.log(`    plain ${(100 * plain).toFixed(1)}, valley ${(100 * mid).toFixed(1)} ${(100 * far).toFixed(1)}, Boltz-2 ${(100 * boltz).toFixed(1)}, start ${(100 * start).toFixed(1)}, noise alone ${(100 * noise).toFixed(1)}, step alone ${(100 * step).toFixed(1)}`);
+  assert.ok(ok1(plain) && ok1(mid) && ok1(far)); assert.ok(!ok1(boltz) && !ok1(start) && !ok1(noise) && !ok1(step));
+  near(boltz, 0.024, 0.006);
+  const r = makeRng(6); let hit = 0; const G = 60;
+  for (let i = 0; i < G; i += 1) if (ok1(go(0.8 + r.u(), r.u(), 1500))) hit += 1;
+  console.log(`    ${(100 * hit / G).toFixed(0)}% of random places match, so nine drops pass ${(100 * (1 - (1 - hit / G) ** 9)).toFixed(0)}% of the time`);
+  assert.ok(hit / G < 0.25);
+});
+
+ok('chapter 9, level 3: the odds chart tells a thinker from a guesser', () => {
+  const K = 1.7, land = (p) => { const o = (p / (1 - p)) ** K; return o / (1 + o); };
+  for (const p of TWO.shares.flat()) {
+    const out = land(p), keep = oddsMiss(p, out), scaled = oddsMiss(p * 0.66, out);
+    if (p <= 0.15) assert.ok(keep > TWO.odds && scaled > TWO.odds, `${p}: keeping the share or scaling it must miss`);
+    near(logit(out), K * logit(p), 1e-9);
+  }
+  assert.ok(oddsMiss(0.3, land(0.3)) > TWO.odds, 'staying on the diagonal misses at 30%');
+  const span = logit(0.5) - logit(0.0005), hit = (2 * TWO.odds) / span;
+  console.log(`    a random guess hits ${(100 * hit).toFixed(0)}% of the time, three in a row ${(100 * hit ** 3).toFixed(2)}%`);
+  assert.ok(hit ** 3 < 0.005);
+});
+
+ok('the dipeptide: phi and psi set the molecule, and nothing else in it moves', () => {
+  const y = new Float64Array(30), z = new Float64Array(30);
+  conformer(-120, 140, z);
+  const L = (a) => BONDS.map(([i, j]) => Math.hypot(a[3 * i] - a[3 * j], a[3 * i + 1] - a[3 * j + 1], a[3 * i + 2] - a[3 * j + 2]));
+  for (const [p, q] of [[-60, -40], [-120, 140], [60, 40], [-75, 170], [120, -20]]) {
+    conformer(p, q, y);
+    near(dihedral(y, DIHEDRALS.PHI), p, 1e-6, 'phi'); near(dihedral(y, DIHEDRALS.PSI), q, 1e-6, 'psi');
+    L(y).forEach((v, i) => near(v, L(z)[i], 1e-9, 'bond length'));
+    for (const a of [3, 4, 5, 6]) for (let e = 0; e < 3; e += 1) near(y[3 * a + e], z[3 * a + e], 1e-9, 'the central residue stays put');
+  }
+  conformer(-120, 300, y); near(dihedral(y, DIHEDRALS.PSI), -60, 1e-6, 'psi wraps, as the map does');
 });
 
 console.log(`${passed} checks passed`);

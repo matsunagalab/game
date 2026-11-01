@@ -1,5 +1,6 @@
 // Things several chapters share.
 export { Tank, Pour, fieldOf, sigmaLevel, placeInk } from '../tank.js';
+export { Board } from '../board.js';
 export const fmt = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '–');
 export const pct = (v, d = 0) => `${(v * 100).toFixed(d)}%`;
 
@@ -13,6 +14,14 @@ export async function check(run, questions, tags = ['paper']) {
   }
   if (all) run.reach(3);
   return all;
+}
+
+// The glass plate behind a board's panel. Older Safari has no roundRect.
+export function plate(g, { x, y, w, h }) {
+  g.fillStyle = 'rgba(250, 250, 247, .62)';
+  g.beginPath();
+  if (g.roundRect) g.roundRect(x, y, w, h, 14); else g.rect(x, y, w, h);
+  g.fill();
 }
 
 // A small chart on the card, drawn at the screen's real resolution.

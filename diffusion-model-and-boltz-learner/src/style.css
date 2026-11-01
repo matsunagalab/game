@@ -86,6 +86,30 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; background: var
 #tagline:empty { display: none; }
 .chart { display: block; width: 100%; flex: 1 1 100%; height: 86px; }
 
+/* Puzzle chapters: one goal always in view, one line of feedback, and the board does the rest. */
+#pipe { display: flex; justify-content: center; align-items: center; gap: 5px; font-size: 11.5px; line-height: 1; color: #8d93aa; letter-spacing: .01em; }
+#pipe span.on { color: var(--ink); font-weight: 700; }
+#pipe i { width: 9px; height: 1px; background: #b4b9c9; position: relative; }
+#pipe i::after { content: ''; position: absolute; right: 0; top: -2px; border-left: 3.5px solid #b4b9c9; border-top: 2.5px solid transparent; border-bottom: 2.5px solid transparent; }
+#goal { display: flex; align-items: baseline; gap: 9px; font: 700 17px/1.22 var(--read); color: var(--ink); }
+#goal-text { flex: 1 1 auto; min-width: 0; }
+#goal-count { flex: none; font: 400 18px/1.1 var(--show); color: var(--plum); white-space: nowrap; }
+#goal-rounds { flex: none; display: inline-flex; gap: 3px; align-self: center; }
+#goal-rounds:empty { display: none; }
+#goal-rounds b { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #9aa0b5; }
+#goal-rounds b.on { background: var(--teal); box-shadow: none; }
+#card.puzzle { gap: 4px; padding: 8px 13px 9px; }
+#card.puzzle #pipe { order: 0; }
+#card.puzzle #goal { order: 1; }
+#card.puzzle #say { order: 2; font-size: 15.5px; line-height: 1.24; min-height: 2.48em; color: var(--soft); transition: color .15s; }
+#card.puzzle #say.good { color: #0b6c70; font-weight: 700; }
+#card.puzzle #say.bad { color: #a3154d; }
+#card.puzzle #reads { order: 3; }
+#card.puzzle #ctrl { order: 4; }
+#card.puzzle #tagline { order: 5; min-height: 16px; }
+.hand { position: absolute; left: 0; top: 0; width: 36px; height: 36px; opacity: 0; filter: drop-shadow(0 3px 3px rgba(29, 33, 65, .35)); will-change: transform; }
+.hand svg { display: block; width: 100%; height: 100%; }
+
 /* Sheets over play */
 .over { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 10px; padding-top: calc(var(--top) + 14px); padding-bottom: calc(var(--bottom) + 10px); background: rgba(232, 237, 236, .5); z-index: 5; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .over .sheet { width: 100%; max-width: 620px; max-height: 100%; overflow-y: auto; padding: 18px 18px 14px; -webkit-overflow-scrolling: touch; background: rgba(251, 251, 248, .96); border-radius: 22px; box-shadow: 0 16px 40px rgba(29, 33, 65, .18); }
@@ -109,4 +133,5 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; background: var
   .over { align-items: center; }
   #title h1 { max-width: 11em; }
 }
-@media (min-width: 900px) and (min-height: 600px) and (min-aspect-ratio: 5/4) { #say { font-size: 19.5px; } }
+@media (min-width: 900px) and (min-height: 600px) and (min-aspect-ratio: 5/4) { #say { font-size: 19.5px; } #goal { font-size: 19.5px; } #card.puzzle { padding: 13px 15px; gap: 8px; } #card.puzzle #say { font-size: 17px; } }
+@media (max-height: 700px) { #goal { font-size: 15.5px; } #card.puzzle #say { font-size: 14.5px; } #goal-count { font-size: 16.5px; } }

@@ -47,6 +47,22 @@ export function churnHeun(x, s0, s1, D, buf, rng, gamma, dim = 2, tmp = new Floa
   return heun(x, hat, s1, D, buf, dim, tmp);
 }
 
+// One step along a hand-made ladder of stops, [{ s, second }], highest noise first. Step k leaves stop k. second asks for Heun's second look.
+// The last step lands at 0, where Heun has no second look (Algorithm 1) and, here, no fresh noise. gamma is fresh noise before a step, as in
+// Algorithm 2: the point is lifted to s(1 + gamma) and the step starts from there. Returns the denoiser calls used.
+export function ladderStep(x, ladder, k, D, buf, rng, gamma = 0, dim = 2, tmp = new Float64Array(dim * 2)) {
+  const s1 = k + 1 < ladder.length ? ladder[k + 1].s : 0;
+  let s0 = ladder[k].s;
+  if (gamma > 0 && s1 > 0) {
+    const hat = s0 * (1 + gamma), r = Math.sqrt(hat * hat - s0 * s0);
+    for (let c = 0; c < dim; c += 1) x[c] += r * rng.n();
+    s0 = hat;
+  }
+  if (ladder[k].second && s1 > 0) return heun(x, s0, s1, D, buf, dim, tmp);
+  euler(x, s0, s1, D, buf, dim);
+  return 1;
+}
+
 // EDM preconditioning. Karras et al. 2022, Table 1. Boltz uses these same forms with sdata = 16 A.
 export const edm = {
   cskip: (s, d) => (d * d) / (s * s + d * d),

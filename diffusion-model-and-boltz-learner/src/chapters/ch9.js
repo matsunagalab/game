@@ -1,305 +1,499 @@
-// Chapter 9. Is it the Boltzmann distribution? Sample frequencies against a real molecular-dynamics reference, then real ensembles.
-import { adk, boltzRun, mdRun, rama } from '../science/data.js';
-import { populations, sliced } from '../science/stats.js';
-import { boltzSchedule, schedule, stochasticStep } from '../science/sampler.js';
+// Chapter 9. Is it the Boltzmann distribution? Level 1: two real chains of adenylate kinase as an exact mixture with a known share, and one dot that sets the
+// two sampler knobs. Level 2: the one real reference, MD of alanine dipeptide, on the molecule itself. Level 3: predict the exact run on Boltz-2's schedule.
+import { adk, boltzRun, mdRun } from '../science/data.js';
+import { populations } from '../science/stats.js';
+import { schedule, stochasticStep } from '../science/sampler.js';
 import { fitRmsd } from '../science/kabsch.js';
-import { noiseBurst, oddsPower, PRESETS, twoState } from '../science/twostate.js';
-import { check, chart, fieldOf, fmt, Pour, pct, Tank } from './common.js';
+import { chainRun, isOpen, noiseBurst, oddsPower, PRESETS } from '../science/twostate.js';
+import { conformer, BONDS } from '../science/dipeptide.js';
+import { logit, oddsMiss, PAD, padOpt, TWO, twoOpt } from '../science/levels.js';
+import { Bundle, chainBonds } from '../mol.js';
+import { Board, fieldOf, fmt, placeInk, plate, Pour, sigmaLevel } from './common.js';
+import { PIGMENT } from '../world.js';
 import { makeRng } from '../science/rng.js';
 
-const SMAX = 400, SMIN = 1, STEPS = 60, KT = 0.596, SEED = 9; // kT in kcal/mol at 300 K. tools/test.mjs checks that this seed is typical of 12.
-const zoomOf = (s) => Math.max(1, 1 + (2.1 * s - 30) / 180);
-const dF = (a, b) => (a > 0 && b > 0 ? -KT * Math.log(a / b) : NaN);
-const LABEL = 'α-like / strand side / φ above 0';
+const KT = 0.596, TILT = 0.0005; // kT in kcal/mol at 300 K. The tilt is the bottom of the odds chart.
+const { smax: SMAX, smin: SMIN, steps: STEPS, seed: SEED, lambda: LAMBDA, gammaMin: GAMMA_MIN, drops: DROPS, eta: ETA, noise: NOISE, rounds: ROUNDS, guess: GUESS, shown: MOLS } = PAD;
+const { width: WIDTH, share: SHARE, tol: TOL, preview: PREVIEW, drops: DROPS2, shown: SHOWN, odds: ODDS, shares: SHARES, start: START } = TWO;
+const INK = '29, 33, 65', TEAL = '#0d8a8f', MAG = '#c2185b', ULTRA = '#2336a8', PLUM = '#6a2c91', SOFT = '#565c7c';
+const REGIONS = ['α-like', 'strand', 'φ > 0'];
+const GOALS = ['Drag the dot until open matches the truth.', 'Dot to ring, then drag the rare bar to your guess.', 'Drag the dot to where open lands.'];
+const CLOSED_INK = PIGMENT.ultra, OPEN_INK = PIGMENT.teal;
 
 export default {
   id: 'boltzmann',
+  puzzle: true,
+  place: [2, 3],
   title: 'Is it the Boltzmann distribution?',
-  tease: 'Compare sample frequencies with a real simulation, then decide how far to trust an ensemble.',
-  principle: 'A diffusion model gives back the distribution of its training data as seen through its sampler, and in Boltz no energy appears anywhere in training. So sample frequencies are not populations unless someone has checked. Sampler settings alone can shrink a rare region, and PDB counts reflect what people crystallised. Reweighting needs an energy and the sample density, and Boltz supplies neither.',
-  goals: ['Reproduce a real population, then see how each sampler setting changes it.', 'Find the step scale that halves the rare region.', 'Get the new case right first time, answer and reason.'],
-  note: `<h3>Chapter note</h3>
-    <p><b>The reference.</b> Our own molecular dynamics of alanine dipeptide (ACE-ALA-NME) in TIP3P water with ff14SB, 300 K, 1 bar, 4 fs with hydrogen mass repartitioning, in OpenMM. Plain MD was not enough. In 37 ns the runs disagreed with each other, with one real entry to φ above 0, of 915 ps, and four one-frame grazes, and the α-like share of 1 ns blocks ran from 0 to 0.73. Pooled, they gave 25.8 / 71.7 / 2.5%, which agrees with the reference within its error. The reason to replace them was too few crossings, not a wrong answer.</p>
-    <p>So three new runs carry a fixed 2-D bias on φ and ψ, from a short well-tempered metadynamics, and each frame is weighted back by exp(+V/kT). ${mdRun()?.se ? `${(mdRun().frames / 1000).toFixed(0)} ns in all. Standard errors between the three runs: ${mdRun().se.map((v) => (100 * v).toFixed(1)).join(', ')} percentage points. The Kish effective sample size is ${mdRun().ess.toLocaleString('en')}, which ignores time correlation. The α-like signal is still correlated at 100 ps, so independent samples number in the hundreds. The field uses 7,000 frames drawn in proportion to weight, with repeats, ${mdRun().distinct.toLocaleString('en')} of them distinct.` : ''} It is a Boltzmann sample of this force field, up to that error. It says nothing about how good the force field is.</p>
-    <p><b>Regions.</b> φ above 0 is one region, and it is mostly αL (3.0%, the rest 0.4%). Below φ = 0, ψ above 45° is the strand side, β with PII, and ψ below 45° the α-like side. The line ψ = 45° sits on the shoulder of the α region, not on the valley floor at 65 to 95°. A cut at 20° gives 28.1% α-like, and a cut at 75° gives 31.5%. φ = 0 is a harmless line.</p>
-    <p><b>Free energy.</b> F is minus kT ln p, with kT = 0.596 kcal/mol at 300 K. These are region free energies in φ and ψ, with every other degree of freedom integrated out.</p>
-    <p><b>The settings.</b> The sampler is Algorithm 18 of AlphaFold3. Boltz-2: η = 1.5, γ₀ = 0.8, γ_min = 1 Å, λ = 1.003. Boltz-1: η = 1.638, γ₀ = 0.605, γ_min = 1.107 Å, λ = 0.901 (<i>boltz/main.py</i>). The burst of fresh noise is λ √((1 + γ₀)² − 1) σ, so 1.50 σ and 1.13 σ, on 154 of Boltz-2's 200 steps. Karras et al. cap γ at √2 − 1, which adds at most 1.0 σ. Boltz-2's Table 7 says that with the exception of σ_min they opted for AlphaFold3's default hyperparameters.</p>
-    <p><b>These runs</b> use 60 steps from 400° to 1°, with ρ = 7, and γ_min scaled to 4°. Only η, γ₀ and λ are the models' own. One seed is shown, and it lies within one standard deviation of the mean of 12 seeds for the plain run, noise alone and Boltz-2's settings. Ten seeds of 4,000 droplets give 29.4 / 67.0 / 3.6% for the plain run, 15.8 / 84.2 / 0.0 for η alone, 28.3 / 69.7 / 2.0 for noise alone, and 22.3 / 77.3 / 0.4 for Boltz-2's three settings. Across seeds as run here, the rare region with Boltz-2's settings lies between about 0.2 and 0.6%. Boltz-2's own range and 200 steps gave the same result for the full preset (0.4%). The η-only result does depend on the range: η = 1.04 is enough on Boltz's range, where η = 1.5 alone gives 0 / 100 / 0. On a torus instead of a flat sheet, η = 1.5 alone leaves 1.6% and the full preset 0.6%.</p>
-    <p><b>What this does and does not show.</b> It is a 2-D exact field, not Boltz. A trained network errs in its own ways, and Boltz's loss is aligned, so nobody should read these numbers as Boltz's error on any protein. It shows only that a sampler can change populations with a perfect field. The Boltz documentation itself says the step size is related to the temperature at which the process samples, and that a lower value gives more diversity.</p>
-    <p><b>The two-state calculation.</b> Exact, this game's own, not from a paper. Two equal Gaussians of width 1 Å, on the real Boltz-2 schedule in Å, 200 steps, 20,000 droplets. The result does not depend on the separation above 5 Å. The odds are raised to a power near 1.7, or near 2.2 with Boltz-1's settings and schedule. The link to temperature is an analogy for a fixed free-energy gap. It leaves out centring, random rotation and Boltz's alignment.</p>
-    <p><b>Reweighting.</b> Each sample gets weight p/q, with p the reference histogram and q the histogram of the samples, in 5° cells. That is a teaching shortcut, and it only sums p over visited cells: about 1% with 4,000 droplets, and 1.9% with 40,000. In two dimensions you can histogram. In 1,800 you cannot. A Boltzmann generator gets exact q from an invertible map and p from an energy function (Noé et al. 2019).</p>
-    <p><b>Boltz-2's MD data.</b> MISATO: 8 ns at 300 K. ATLAS: the last 10 ns of 100 ns. mdCATH: the last 10% of runs of up to 500 ns, at 320 K (Passaro et al., Appendix A.1.2). Section 6 calls the MD data used at the later stages of training relatively small.</p>
-    <p><b>BioEmu's 0.74 kcal/mol</b> is a leave-one-out test on 12 fast folders, with "DESRES-finetuned models", on a 2-D free-energy surface. It is not the public model.</p>
+  tease: 'Run a sampler where the true share is known, and watch what its two knobs do to a rare state.',
+  principle: 'On a perfect field you matched the truth, then two sampler knobs alone shrank a rare state. Sample frequencies are not populations unless checked.',
+  caveat: 'Exact toy fields: nothing direct about Boltz on any protein.',
+  goals: GOALS,
+  get note() {
+    const m = mdRun(), K = adk(), B = boltzRun(), base = B.finals['seed 42'], far = ['seed 43', 'second sample', 'step scale 1.0', '40 steps'].map((k) => `${fmt(fitRmsd(B.finals[k], base), 1)} Å for ${k}`).join(', ');
+    return `<h3>Chapter note</h3>
+    <p><b>Your moves and the real thing.</b> The dot sets two real numbers of the sampler, Algorithm 18 of AlphaFold3, which Boltz also uses. η, the step scale, stretches each step. γ₀ sets how much fresh noise comes before each step. They are different knobs, and Boltz-2's preset changes both, together with the noise scale λ, which stays at ${LAMBDA} here.</p>
+    <p><b>Why two kinds of board.</b> No true Boltzmann reference exists here for a protein, so none is faked. Levels 1 and 3 use a teaching model with a known answer: two real structures of adenylate kinase, closed (1AKE chain A) and open (4AKE chain A), 214 C-alpha atoms, as a mixture of two Gaussians of width ${WIDTH} Å with a share we set. There is no rotation, so the denoiser is exact and the true share is known. The best-rotation denoiser of chapter 7 is not used, because its closed share moves with the starting noise. Chains that land are real members of the run, in all 642 coordinates. Level 2 uses the one real reference in this game, molecular dynamics of alanine dipeptide.</p>
+    <p><b>What this does and does not show.</b> The fields are exact, which Boltz is not. A trained network errs in its own ways, these settings were made for a trained network, and Boltz's loss is aligned, so nobody should read these numbers as Boltz's error on any protein. They show only that a sampler can change populations with a perfect field.</p>
+    <p><b>Level 1.</b> Boltz-2's real schedule in Å, 200 steps. Letting go runs ${DROPS2.toLocaleString('en')} droplets on the line between the states, exact because Gaussians of one width depend only on that line, and ${SHOWN} whole chains, which the tests compare with the line. A drag shows ${PREVIEW.toLocaleString('en')} droplets. Matching the truth is a valley, not a point. On it, η falls as γ₀ rises: η = 1 at γ₀ = 0, about 0.9 at γ₀ = 0.5, and about 0.8 at γ₀ = 1. Boltz-2 sits far from it, near a 2.5% share for a true 10%. This is a result on an exact field, and says nothing about what suits a trained network.</p>
+    <p><b>Level 2, the reference.</b> Our own molecular dynamics of alanine dipeptide (ACE-ALA-NME) in TIP3P water with ff14SB, 300 K, 1 bar, 4 fs with hydrogen mass repartitioning, in OpenMM. A long simulation visits each conformation in proportion to exp(−U/kT), so on this map frequencies mean something physical. Plain MD was not enough. In 37 ns the runs disagreed with each other, with one real entry to φ above 0, of 915 ps, and four one-frame grazes, and the α-like share of 1 ns blocks ran from 0 to 0.73. Pooled, they gave 25.8 / 71.7 / 2.5%, which agrees with the reference within its error. The reason to replace them was too few crossings, not a wrong answer.</p>
+    <p>So three new runs carry a fixed 2-D bias on φ and ψ, from a short well-tempered metadynamics, and each frame is weighted back by exp(+V/kT). ${(m.frames / 1000).toFixed(0)} ns in all. The bars' whiskers are standard errors between those three runs, about ${(100 * m.pop[0]).toFixed(0)} ± ${(100 * m.se[0]).toFixed(0)} / ${(100 * m.pop[1]).toFixed(0)} ± ${(100 * m.se[1]).toFixed(0)} / ${(100 * m.pop[2]).toFixed(1)} ± ${(100 * m.se[2]).toFixed(1)}%, and the three small dots are the runs themselves, ${m.perRun.map((r) => `${(100 * r[0]).toFixed(0)}/${(100 * r[1]).toFixed(0)}/${(100 * r[2]).toFixed(1)}`).join(', ')}. Blocks within runs understate this error. The Kish effective sample size is ${m.ess.toLocaleString('en')}, which ignores time correlation. The α-like signal is still correlated at 100 ps, so independent samples number in the hundreds. The field uses 7,000 frames drawn in proportion to weight, with repeats, ${m.distinct.toLocaleString('en')} of them distinct. It is a Boltzmann sample of this force field, up to that error. It says nothing about how good the force field is.</p>
+    <p><b>The molecule and the small map.</b> Each droplet of the sampler is a point in φ and ψ, shown on the small map, and each of the ${MOLS} molecules on the board is one of those droplets, built from the real starting structure with bond lengths and angles fixed and only φ and ψ turned. The sampler runs on the exact 2-D field of those frames, not on the molecule's coordinates. Before a run the molecules are real MD frames. The molecules turn while droplets run only because the droplets move. Sampler steps are not MD time and not a pathway.</p>
+    <p><b>Regions.</b> The three bars are regions of the φ, ψ map, not thermodynamic states. φ above 0 is one region, and it is mostly αL (3.0%, the rest 0.4%). Below φ = 0, ψ above 45° is the strand side, β with PII, and ψ below 45° the α-like side. The line ψ = 45° sits on the shoulder of the α region, not on the valley floor at 65 to 95°. A cut at 20° gives 28.1% α-like, and a cut at 75° gives 31.5%. φ = 0 is a harmless line. The rare bar is drawn ten times taller than the other two.</p>
+    <p><b>Free energy.</b> F is minus kT ln p, with kT = ${KT} kcal/mol at 300 K. The rare region lies ${fmt(KT * Math.log(m.pop[1] / m.pop[2]), 2)} ± ${fmt(KT * (m.se[2] / m.pop[2]), 2)} kcal/mol above the strand side. These are region free energies in φ and ψ, with every other degree of freedom integrated out.</p>
+    <p><b>The settings.</b> Boltz-2: η = 1.5, γ₀ = 0.8, γ_min = 1 Å, λ = 1.003. Boltz-1: η = 1.638, γ₀ = 0.605, γ_min = 1.107 Å, λ = 0.901 (<i>boltz/main.py</i>). The burst of fresh noise is λ √((1 + γ₀)² − 1) σ, so ${fmt(noiseBurst(PRESETS.boltz2), 2)} σ and ${fmt(noiseBurst(PRESETS.boltz1), 2)} σ, on 154 of Boltz-2's 200 steps, above 1 Å. Karras et al. cap γ at √2 − 1, which adds at most 1.0 σ. Boltz-2's Table 7 says that with the exception of σ_min they opted for AlphaFold3's default hyperparameters. Their documentation says the step size is related to the temperature at which the process samples, and that a lower value gives more diversity.</p>
+    <p><b>The 2-D runs</b> use ${STEPS} steps from ${SMAX}° to ${SMIN}°, with ρ = 7, and γ_min scaled to ${GAMMA_MIN}°. Only η, γ₀ and λ are the models' own. Letting go runs ${DROPS.toLocaleString('en')} droplets on the stored field, which below σ = 5° stays at its σ = 5° grid. That blurs the picture a little and leaves the region shares unchanged, as tools/test.mjs checks against the exact sum. One seed is shown, and it lies within one standard deviation of the mean of 12 seeds for the plain run, noise alone and Boltz-2's settings. Ten seeds of 4,000 droplets, exact to the end, give 29.4 / 67.0 / 3.6% for the plain run, 15.8 / 84.2 / 0.0 for η alone, 28.3 / 69.7 / 2.0 for noise alone, 22.3 / 77.3 / 0.4 for Boltz-2's three settings, and 17.8 / 82.1 / 0.1 for Boltz-1's. Across seeds, the rare region with Boltz-2's settings lies between about 0.2 and 0.6%. Boltz-2's own range and 200 steps gave the same result for the full preset (0.4%). The η-only result does depend on the range: η = 1.04 is enough to halve the rare region on Boltz's range, near 1.1 on this one, and η = 1.5 alone gives 0 / 100 / 0 there. Read the direction and not the number. On a torus instead of a flat sheet, η = 1.5 alone leaves 1.6% and the full preset 0.6%. With η = 1 and no added noise the droplets match, because the data were already Boltzmann samples and the sampler solved the equation faithfully. Boltz has a third reason to differ: its aligned loss means its denoiser is not this exact field, even before the sampler is changed. A longer step alone empties the rare region, and the added noise takes back part of what it did.</p>
+    <p><b>More steps do not repair η.</b> η changes the equation being solved, not the accuracy of solving it. The flow runs too fast at every noise level, so a finer schedule converges to the wrong answer.</p>
+    <p><b>Sampler steps are not time.</b> Iterations of a sampler are not MD time and not a pathway. Chains landing on the board are not the enzyme opening and closing, and nothing about the order of steps says how a molecule moves between regions.</p>
+    <p><b>Level 3, the two-state calculation.</b> Exact, this game's own, not from a paper. It leaves out centring, random rotation and Boltz's alignment. The axes are odds on a log scale, so a line through 50:50 means the odds are raised to a power. The calculation with states 10 Å apart gives 0.29%, 2.2% and 19.6% for 3.4%, 10% and 30%, powers 1.75, 1.73 and 1.67. At the real 119.5 Å between these chains it gives 0.35%, 2.4% and 19.8%, powers 1.69, 1.69 and 1.65, from 900,000 droplets. So the power is near 1.7 either way, and separation matters a little. With Boltz-1's settings and schedule it is near 2.2. Runs of whole chains in all 642 coordinates agree with the line within sampling error, and the width of the states does not change it. The grey line is a faithful sampler. For a fixed free-energy gap, that power is what cooling to about 1/1.7 of the temperature would do. The link to temperature is an analogy. The view zooms with the noise.</p>
+    <p><b>What the model is trying to reproduce.</b> In Boltz no energy appears in the loss, no temperature, and no exp(−U/kT), and the denoiser is not an exact field. A model returns the distribution of its training data as seen through its sampler. The PDB-wide map gives very different shares from one peptide, because it mixes thousands of residues in folded proteins, each held in place by its neighbours. Among ${K.counts.chains} complete chains of E. coli adenylate kinase we found, ${K.counts.closed} are closed. That records which ligands people chose to crystallise with, not how much time the protein spends closed. Boltz-1 trained on one structure per system. Boltz-2 also trains on NMR and molecular-dynamics ensembles, drawing one conformer at random each time, and adds distance and B-factor targets from the ensemble. That is a real step toward thermal data, and it does not on its own make samples Boltzmann weighted. More seeds shrink the sampling noise around whatever the model and sampler give, and they do not remove a bias.</p>
+    <p><b>Boltz-2's MD data.</b> MISATO: 8 ns at 300 K. ATLAS: the last 10 ns of 100 ns. mdCATH: the last 10% of runs of up to 500 ns, at 320 K (Passaro et al., Appendix A.1.2). Section 6 calls the MD data used at the later stages of training relatively small. Runs like these rarely cross slow barriers, so they cannot hold the true weights of slow states.</p>
+    <p><b>Reweighting.</b> If you know both the energy of each sample and the probability with which it was generated, you can give each sample the weight p/q. This is the idea of a Boltzmann generator, which gets exact q from an invertible map and p from an energy function (Noé et al. 2019). On the 2-D map a histogram can stand in: with Boltz-2's settings, weights from 5° cells bring the rare region to about 1% with 4,000 droplets and 1.9% with 40,000, because they only sum p over visited cells. Weights cannot create what the sampler missed. In two dimensions you can histogram, and in 1,800 you cannot. Boltz gives no energy for a sample and no density either. Song and colleagues showed that a diffusion model's density can be computed by integrating along the ODE, which holds for a deterministic flow. Algorithm 18 adds noise and fresh rotations at each step, so it has no such formula.</p>
+    <p><b>Using samples.</b> Samples are good at proposing conformations to test. Counts of samples are not free energies. A sound route to populations is to start molecular dynamics from samples, check that the trajectories connect the states, and only then build a Markov model and reweight. Unconnected states cannot be weighed against each other. BioEmu's authors suggest starting MD from samples, and the Markov model is a further step.</p>
+    <p><b>Real ensembles.</b> AlphaFold3's authors say multiple seeds "do not produce an approximation of the solution ensemble". Boltz-2, with molecular-dynamics conditioning, predicts which residues fluctuate: per-target correlation with simulated RMSF was 0.79 on mdCATH and 0.85 on ATLAS, against 0.72 and 0.76 with X-ray conditioning, and BioEmu scored 0.77 and 0.83. That measures local flexibility, not the populations of metastable states. The authors say that diversity stayed below that of BioEmu and AlphaFlow, and that the model often fails to capture large conformational changes. BioEmu trains on over 200 ms of MD, reweighted toward equilibrium where possible, and fine-tunes on measured stabilities. Its 0.74 kcal/mol is a leave-one-out test on 12 fast folders, with "DESRES-finetuned models", on a 2-D free-energy surface, and is not the public model, which predicts folding free energies near 1 kcal/mol. Its authors note that it generates distributions "entirely empirically", with no energy function behind them, so its samples cannot be reweighted directly. It covers single chains near 300 K and does not model dynamics.</p>
+    <p><b>The spread of real Boltz samples.</b> In the stored runs of our 136-residue protein (Real Boltz output, Boltz 2.2.1, one protein, reduced settings), each compared with the first: ${far}. That spread mixes the model's uncertainty with sampler choices. It may overlap with thermal motion, and nothing makes it equal.</p>
     <p><b>The name.</b> MIT Jameel Clinic's announcement of December 2024 says Boltz-1 is named after the Boltzmann distribution. That is the origin of a name. The authors do not claim Boltzmann statistics, and their papers discuss neither energies in training nor population recovery.</p>
-    <p class="small">Boltzmann generators: Noé et al., Science 365, eaaw1147 (2019). BioEmu: Lewis et al., Science 389, eadv9817 (2025), read as its preprint, doi 10.1101/2024.12.05.626885. AlphaFold3: Abramson et al., Nature 630, 493 (2024). Boltz-2: Passaro et al., bioRxiv 10.1101/2025.06.14.659707, Tables 7, 9 and 10, Section 6, Appendix A and C.1.1. Likelihood from a diffusion model: Song et al. 2021.</p>`,
-
-  async setup(run) {
-    const T = run.state.T = new Tank(run), m = run.state.m = mdRun(), { ui } = run;
-    ui.say('Mixing the water.');
-    const F = run.state.F = await fieldOf(run, 'md', m.x, m.y);
-    run.state.D = (x, s, out) => F.at(x[0], x[1], s, out);
-    run.state.Dfast = (x, s, out) => F.fast(x[0], x[1], s, out);
-    run.state.ref = m.pop;
-    run.state.fieldPop = populations(m.x, m.y);
-    run.state.pour = new Pour(T, Math.min(9000, T.N));
-    const rng = makeRng(3), N = T.N, px = new Float32Array(N), py = new Float32Array(N);
-    for (let i = 0; i < N; i += 1) { const k = i < m.n ? i : rng.int(m.n); px[i] = m.x[k]; py[i] = m.y[k]; }
-    run.state.dataPaint = () => { T.setZoom(1, 0.3); T.paint(px, py, N, {}); };
-    run.state.dataPaint();
+    <p class="small">Boltzmann generators: Noé et al., Science 365, eaaw1147 (2019). BioEmu: Lewis et al., Science 389, eadv9817 (2025), read as its preprint, doi 10.1101/2024.12.05.626885. AlphaFold3: Abramson et al., Nature 630, 493 (2024). Boltz-2: Passaro et al., bioRxiv 10.1101/2025.06.14.659707, Tables 7, 9 and 10, Section 6, Appendix A and C.1.1. Likelihood from a diffusion model: Song et al. 2021.</p>`;
   },
-  stages: [reference, faithful, knobs, halve, twoStates, whatDecides, reweight, ensembles, useThem, checkStage],
+
+  setup(run) {
+    const T = run.state.T = new Board(run, { span: 78 }), m = run.state.m = mdRun(), K = adk();
+    T.setPanel(190, 0, 232);
+    const a = K.models[K.ids.indexOf(TWO.closed)], b = K.models[K.ids.indexOf(TWO.open)];
+    run.state.C = new Chains(run, a, b);
+    run.state.P = new Pad(run);
+    run.state.field = fieldOf(run, 'md', m.x, m.y).then((F) => { run.state.F = F; run.state.Dfast = (x, s, out) => F.fast(x[0], x[1], s, out); return F; });
+    run.state.field.catch(() => {}); // Leaving at once while the water mixes is not an error.
+    run.state.pour = new Pour({ paint: () => {}, setZoom: () => {} }, Math.min(DROPS, run.world.dropCount));
+    run.state.S = schedule(STEPS, SMIN, SMAX, 7);
+    run.probe = {};
+  },
+  stages: [level1, level2, level3],
 };
 
-async function go(run, opt, { seconds = 2, seed = SEED } = {}) {
-  const { pour, D, Dfast, m, F } = run.state, rng = makeRng(seed), S = schedule(STEPS, SMIN, SMAX, 7);
-  pour.start(rng, F.mix.mx, F.mix.my, SMAX);
-  run.state.T.setZoom(zoomOf(SMAX), 0.3);
-  await pour.run(run, S, (p, g, i, k) => stochasticStep(p, S[k], S[k + 1], i < 4000 ? D : Dfast, g, rng, opt), { seconds, zoomOf, boost: 1.5 });
-  if (!run.alive) return null;
-  const X = Float32Array.from(pour.x.subarray(0, 4000)), Y = Float32Array.from(pour.y.subarray(0, 4000));
-  return { X, Y, pop: populations(X, Y), dist: sliced(X, Y, m.x, m.y) };
+// Real chains of the two states on the board, and droplets on the line between them.
+class Chains {
+  constructor(run, a, b) {
+    const { n } = { n: a.length / 3 }, dim = a.length;
+    Object.assign(this, { run, a, b, n, dim, X: new Float64Array(SHOWN * dim), shown: SHOWN, sigma: 0, ink: new Float32Array(3 * SHOWN), heavy: new Float32Array(SHOWN).fill(1), token: 0 });
+    this.bundle = new Bundle(run, { n, bonds: chainBonds(n), K: SHOWN, drops: Math.round(run.world.dropCount * 0.6), seed: 7, thick: 0.5, mass: 0.7 });
+    const o = [0, 0, 0];
+    for (let i = 0; i < n; i += 1) for (let e = 0; e < 3; e += 1) o[e] += (a[3 * i + e] + b[3 * i + e]) / (2 * n);
+    this.origin = o;
+    this.xi = new Float64Array(SHOWN * dim);
+    const r = makeRng(41);
+    for (let i = 0; i < this.xi.length; i += 1) this.xi[i] = r.n();
+    this.on = true;
+    run.tick((dt) => this.frame(dt));
+  }
+
+  // Chains at rest, split in this share: what a share looks like on a real molecule.
+  rest(share) {
+    const { X, a, b, dim, xi } = this, up = Math.max(share > 0.004 ? 1 : 0, Math.round(share * SHOWN));
+    for (let c = 0; c < SHOWN; c += 1) { const y = c < up ? b : a; for (let i = 0; i < dim; i += 1) X[c * dim + i] = y[i] + WIDTH * xi[c * dim + i]; }
+    this.paintStates();
+    this.sigma = 0;
+  }
+
+  // A rare chain lies alone where the others lie on top of each other, so it needs darker ink to read as a chain.
+  paintStates() { for (let c = 0; c < SHOWN; c += 1) { const open = isOpen(this.X, c, this.a, this.b); this.ink.set(open ? OPEN_INK : CLOSED_INK, 3 * c); this.heavy[c] = open ? 4.2 : 1; } }
+
+  // The real run, in view. Fast through the high noise, where nothing shows, and slow at the end.
+  go(p, opt, seed) {
+    const { run, X } = this, my = (this.token += 1), it = chainRun({ p, a: this.a, b: this.b, w: WIDTH, N: DROPS2, K: SHOWN, X, opt, seed }), t0 = performance.now(), TOTAL = run.world.reduce ? 200 : 1500;
+    let k = 0;
+    return run.hold(new Promise((resolve, reject) => {
+      const frame = () => {
+        if (!run.alive) return;
+        if (my !== this.token) { resolve(null); return; }
+        try {
+          const f = Math.min(1, (performance.now() - t0) / TOTAL), want = f >= 1 ? Infinity : 200 * (1 - (1 - f) ** 2.4), end = performance.now() + 9;
+          let r = null;
+          while (k < want && performance.now() < end) { r = it.next(); k += 1; if (r.done) { this.sigma = 0; this.paintStates(); resolve(r.value); return; } this.sigma = r.value; }
+          // Pigment follows which state each chain is nearer, once there is anything to see.
+          if (this.sigma < 60) this.paintStates(); else this.ink.fill(0.6);
+          run.sound.setSigma(sigmaLevel(this.sigma + 0.01, 2, 200));
+          requestAnimationFrame(frame);
+        } catch (e) { reject(e); }
+      };
+      requestAnimationFrame(frame);
+    }));
+  }
+
+  frame(dt) {
+    if (!this.on) return;
+    if (!this.run.world.reduce) this.bundle.turn(dt * 0.1, 0);
+    this.bundle.draw(this.X, { chainInk: this.ink, chainMass: this.heavy, origin: this.origin, sigma: Math.min(30, this.sigma), mass: this.sigma > 3 ? 1.6 : 1 });
+  }
 }
 
-const pp = (p) => `${pct(p[0], 1)} / ${pct(p[1], 1)} / ${pct(p[2], 1)}`;
-const pe = (m) => `${pct(m.pop[0])} ± ${(100 * m.se[0]).toFixed(0)} / ${pct(m.pop[1])} ± ${(100 * m.se[1]).toFixed(0)} / ${pct(m.pop[2], 1)} ± ${(100 * m.se[2]).toFixed(1)}`;
-const roundRun = (r) => `${(100 * r[0]).toFixed(0)}/${(100 * r[1]).toFixed(0)}/${(100 * r[2]).toFixed(1)}`;
+// The molecule of the simulation, many conformers at once, with its small map beside it.
+class Peptide {
+  constructor(run) {
+    Object.assign(this, { run, K: MOLS, X: new Float64Array(MOLS * 30), ink: new Float32Array(3 * MOLS), xs: null, ys: null, n: 0, o: [0, 0, 0] });
+    this.bundle = new Bundle(run, { n: 10, bonds: BONDS, K: MOLS, drops: Math.round(run.world.dropCount * 0.25), seed: 11, thick: 0.11, mass: 0.05 });
+    this.on = false;
+    run.tick((dt) => { if (this.on) { if (!run.world.reduce) this.bundle.turn(dt * 0.12, 0); this.bundle.draw(this.X, { chainInk: this.ink, origin: this.o }); } });
+    run.state.T.extra.push((g) => { if (this.on) this.drawMap(g); });
+  }
 
-async function reference(run) {
-  const { ui } = run, { ref, m, T } = run.state;
-  ui.tags('real');
-  T.labels = false;
-  await run.line(`This map is different. It is no longer many residues from many proteins. It is one small molecule, alanine dipeptide, in water at 300 K, from ${(m.frames / 1000).toFixed(0)} ns of molecular dynamics that we ran for this game.`);
-  await run.line('A long simulation visits each conformation in proportion to exp(−U/kT). Summed over a region of this map, that gives exp(−F/kT). So here the frequencies mean something physical: they are the populations of this force field.');
-  await run.line('Long is the hard part. Plain runs of tens of ns disagreed with each other, so we added a fixed bias that speeds up the crossings, and weighted every frame back.');
-  ui.reads([{ value: pe(m), label: LABEL }, { value: `${KT} kcal/mol`, label: 'kT at 300 K' }]);
-  await run.line(`Even so, three independent runs gave ${m.perRun.map(roundRun).join(', ')}. Those errors are real, and we keep them on screen. The strand side is β with PII, and ψ = 45° is the line we drew to split it from the α-like side.`);
-  const right = KT * Math.log(ref[1] / ref[2]), err = KT * (m.se[2] / ref[2]);
-  run.state.gap = { right, err };
-  const opts = [right, right * 2.3, right / 2.6].map((v) => v.toFixed(1));
-  await run.choose(`Work it out. The φ above 0 region holds ${pct(ref[2], 1)}, and the strand side ${pct(ref[1], 1)}. How much higher in free energy is the rare region?`, [
-    { text: `${opts[2]} kcal/mol`, why: `Take kT × ln(${pct(ref[1], 1)} / ${pct(ref[2], 1)}). The ratio is about ${(ref[1] / ref[2]).toFixed(1)}, so ln is about ${Math.log(ref[1] / ref[2]).toFixed(1)}.` },
-    { text: `${opts[0]} kcal/mol`, right: true, why: `Yes: 0.596 × ln(${(ref[1] / ref[2]).toFixed(1)}) is ${right.toFixed(2)} ± ${err.toFixed(2)} kcal/mol. A rare region is only a kilocalorie or two up.` },
-    { text: `${opts[1]} kcal/mol`, why: `Take kT × ln(${pct(ref[1], 1)} / ${pct(ref[2], 1)}). The ratio is about ${(ref[1] / ref[2]).toFixed(1)}, so ln is about ${Math.log(ref[1] / ref[2]).toFixed(1)}.` },
-  ]);
-}
+  // Droplets to show: each of the first K is a conformer.
+  set(xs, ys, n) {
+    this.xs = xs; this.ys = ys; this.n = n;
+    const c = [0, 0, 0];
+    for (let k = 0; k < this.K; k += 1) { conformer(xs[k], ys[k], this.X, k); placeInk(xs[k], ys[k], c); this.ink.set(c, 3 * k); }
+  }
 
-async function faithful(run) {
-  const { ui } = run, { ref, m } = run.state;
-  ui.tags('game', 'real', 'model');
-  ui.reads([{ value: pe(m), label: 'simulation' }, { id: 'r-s', value: '–', label: 'sampler' }, { id: 'r-e', value: '–', label: 'kcal/mol off, rare region' }]);
-  ui.say('The field below is the exact denoiser of this simulation, on a flat map. The sampler has no extra noise and a step scale η of 1. <b>Run it.</b>');
-  await run.until((done) => ui.ctrl(ui.button('Run', () => { ui.ctrl(); done(); }, { id: 'run' })));
-  const r = await go(run, { eta: 1, gamma0: 0, gammaMin: 4, lambda: 1 });
-  if (!r) return;
-  run.reach(1);
-  run.state.exact = r;
-  ui.read('r-s', pp(r.pop)); ui.read('r-e', fmt(Math.abs(dF(r.pop[2], r.pop[1]) - dF(ref[2], ref[1])), 2));
-  await run.line('That is close. With a perfect field and a careful sampler, sample frequencies match real populations. This is the promise of the mathematics, and you have now seen it hold.');
-  await run.line('But notice what makes it true. It held because the data were already Boltzmann samples, and because the sampler solved the equation faithfully.');
-  await run.line('Boltz has a third reason to differ. Its aligned loss means its denoiser is not this exact field, even before the sampler is changed.');
-}
-
-async function knobs(run) {
-  const { ui } = run, { ref, m } = run.state, burst = noiseBurst(PRESETS.boltz2), burst1 = noiseBurst(PRESETS.boltz1);
-  ui.tags('game', 'model', 'paper');
-  await run.line(`AlphaFold3 and Boltz do not take that plain step. Each step is scaled up by η: 1.5 in Boltz-2 and 1.638 in Boltz-1. They also add a large burst of fresh noise before each step, about ${fmt(burst, 1)} σ with these settings.`);
-  await run.line(`That burst is ${fmt(burst1, 1)} σ for Boltz-1, and Karras and colleagues capped theirs at 1.0 σ. On Boltz-2's real schedule it applies to ${boltzSchedule(200).slice(1, 200).filter((s) => s > 1).length} of the 200 steps, above 1 Å. Their documentation says the step size is related to the temperature of sampling.`);
-  ui.reads([{ value: pe(m), label: 'simulation' }, { id: 'r-s', value: '–', label: 'sampler' }, { id: 'r-e', value: '–', label: 'kcal/mol off, rare region' }]);
-  ui.say('The same exact field. <b>Run each setting alone, then the real sets.</b> A different seed moves these numbers a little.');
-  const results = {};
-  const presets = {
-    eta: { label: 'η 1.5 alone', eta: 1.5, gamma0: 0, lambda: 1, say: 'The longer step alone. Droplets are pulled too hard at every noise level, and the rare region empties.' },
-    gam: { label: 'Noise alone', eta: 1, gamma0: 0.8, lambda: 1.003, say: 'The noise alone. With a plain step, the rare region loses about two fifths, and the strand side gains about 3 points.' },
-    b2: { label: 'Boltz-2 set', eta: 1.5, gamma0: 0.8, lambda: 1.003, say: 'Boltz-2\'s three settings together. The noise takes back part of what the longer step did.' },
-    b1: { label: 'Boltz-1 set', eta: 1.638, gamma0: 0.605, lambda: 0.901, say: 'Boltz-1\'s three settings together: a longer step, and less noise than Boltz-2.' },
-  };
-  await run.until((done) => {
-    let busy = false;
-    const mk = (k) => ui.button(presets[k].label, async (b) => {
-      if (busy) return;
-      busy = true;
-      const o = presets[k], r = await go(run, { eta: o.eta, gamma0: o.gamma0, gammaMin: 4, lambda: o.lambda }, { seconds: 1.5 });
-      busy = false;
-      if (!r) return;
-      results[k] = r; run.state.presets = results; b.className = 'btn on';
-      ui.say(o.say);
-      ui.read('r-s', pp(r.pop)); ui.read('r-e', r.pop[2] > 0.0015 ? fmt(Math.abs(dF(r.pop[2], r.pop[1]) - dF(ref[2], ref[1])), 1) : 'nearly gone');
-      if (Object.keys(results).length === 4 && !document.getElementById('next')) { ui.ctrl$.append(ui.button('Next', () => done(), { id: 'next' })); ui.fit(); }
-    }, { quiet: true, id: `p-${k}` });
-    ui.ctrl(ui.chips([mk('eta'), mk('gam'), mk('b2'), mk('b1')]));
-  });
-  ui.ctrl();
-  await run.line(`With Boltz-2's settings on a perfect field, the ${pct(ref[2], 1)} region fell to about ${pct(results.b2.pop[2], 1)}. Three settings changed together: step scale, noise and noise scale. The longer step alone would empty the region, and the added noise brings part of it back.`);
-  await run.line('Be careful with that. This is a 2-D toy with an exact field. A trained network errs in its own ways, and these settings were made for a trained network. It tells you only that the sampler has a say in populations.');
-}
-
-async function halve(run) {
-  const { ui, sound } = run, { fieldPop } = run.state, base = run.state.exact?.pop[2] ?? fieldPop[2];
-  ui.tags('game', 'model');
-  ui.reads([{ id: 'r-e', value: '1.00', label: 'step scale η' }, { value: pct(base, 1), label: 'rare region, plain sampler' }, { id: 'r-s', value: '–', label: 'rare region now' }]);
-  ui.say(`<b>Find an η that cuts the rare region to about half, near ${pct(base / 2, 1)}.</b> No added noise here.`);
-  await run.until((done) => {
-    let eta = 1, busy = false;
-    const sl = ui.slider({ label: 'η', min: 1, max: 1.6, step: 0.01, value: 1, id: 'eta', format: (v) => v.toFixed(2), onInput: (v) => { eta = v; ui.read('r-e', v.toFixed(2)); } });
-    const go2 = ui.button('Run', async (b) => {
-      if (busy) return;
-      busy = true; b.disabled = true;
-      const r = await go(run, { eta, gamma0: 0, gammaMin: 4, lambda: 1 }, { seconds: 1.2, seed: 8 });
-      busy = false; b.disabled = false;
-      if (!r) return;
-      ui.read('r-s', pct(r.pop[2], 2));
-      const q = r.pop[2] / base;
-      run.state.etaFound = eta;
-      if (q > 0.33 && q < 0.67) { sound.good(2); run.reach(2); ui.ctrl(); done(); } else ui.say(q >= 0.67 ? 'Not enough yet. Raise η a little.' : 'Too far. Lower η.');
-    }, { id: 'run' });
-    ui.ctrl(sl, go2);
-  });
-  await run.line(`At η = ${run.state.etaFound.toFixed(2)} the rare region halved in this run. The flow runs too fast at every noise level, so more steps do not repair it. How large an η does this depends on where the schedule starts, so read the direction and not the number.`);
-}
-
-async function twoStates(run) {
-  const { ui, sound } = run, { T } = run.state;
-  ui.tags('game', 'model');
-  T.clear(); T.showMap = false; T.setZoom(1, 0);
-  await run.line('Here is a cleaner test, which leaves out the map. Take two sharp states of the same shape, an exact field, Boltz-2\'s real schedule in Å, and its 200 steps. This is this game\'s own calculation, not a published result.');
-  const c = chart({ height: 96 }), xs = [], ys = [], line = Array.from({ length: 21 }, (_, i) => 0.02 + (i * 0.48) / 20);
-  // Two pools of ink, each with its share of the droplets. Both are drawn from one fixed Gaussian cloud.
-  const N = Math.min(8000, T.N), gx = new Float32Array(N), gy = new Float32Array(N), px = new Float32Array(N), py = new Float32Array(N), lx = new Float32Array(N), ly = new Float32Array(N), ink = makeRng(12);
-  for (let i = 0; i < N; i += 1) { gx[i] = 26 * ink.n(); gy[i] = 26 * ink.n(); }
-  const pools = (share) => {
-    for (let i = 0; i < N; i += 1) {
-      const minor = i < share * N;
-      px[i] = gx[i] + (minor ? 95 : -80); py[i] = gy[i] + (minor ? 150 : -20);
-      lx[i] = minor ? -100 : -65; ly[i] = minor ? 145 : -35;
+  drawMap(g) {
+    const b = this.run.state.T.box, s = Math.min(112, b.w * 0.3), x0 = b.x + 10, y0 = b.y + 22, k = s / 360;
+    g.save();
+    g.fillStyle = 'rgba(250, 250, 247, .7)'; g.fillRect(x0, y0, s, s);
+    g.strokeStyle = `rgba(${INK}, .3)`; g.lineWidth = 1; g.strokeRect(x0, y0, s, s);
+    if (this.xs) {
+      const c = [0, 0, 0], N = Math.min(this.n, 900);
+      for (let i = 0; i < N; i += 1) {
+        const u = (this.xs[i] + 180) * k, v = (260 - this.ys[i]) * k;
+        if (u < 0 || u > s || v < 0 || v > s) continue;
+        placeInk(this.xs[i], this.ys[i], c);
+        g.fillStyle = `rgba(${Math.round(255 * Math.exp(-c[0]))}, ${Math.round(255 * Math.exp(-c[1]))}, ${Math.round(255 * Math.exp(-c[2]))}, .7)`;
+        g.fillRect(x0 + u, y0 + v, 1.6, 1.6);
+      }
     }
-    T.setZoom(1, 0); T.paint(px, py, N, { gx: lx, gy: ly, boost: 0.9 });
-  };
-  pools(0.1);
-  const draw = () => c.lines([{ x: line, y: line, color: '#8a8fa8', dash: [5, 4], width: 1.5 }, ...(xs.length ? [{ x: xs, y: ys, color: '#6a2c91' }] : [])], { x0: 0.02, x1: 0.5, y0: 0, y1: 0.5, xlabel: 'true share of the minor state', ylabel: 'share after sampling' });
-  ui.reads([{ id: 'r-p', value: '10%', label: 'true minor share' }, { id: 'r-o', value: '–', label: 'after sampling' }, { id: 'r-k', value: '–', label: 'power on the odds' }]);
-  ui.say('<b>Set the true share of the minor state, and run. Try three shares.</b>');
-  let p = 0.1, runs = 0;
+    g.font = 'italic 12px "Ysabeau Office", serif'; g.fillStyle = SOFT; g.textAlign = 'right'; g.textBaseline = 'alphabetic'; g.fillText('φ', x0 + s - 3, y0 + s - 3); g.textAlign = 'left'; g.fillText('ψ', x0 + 3, y0 + 11);
+    g.restore();
+  }
+}
+
+// One dot on the plane of the two knobs, and bars against a reference.
+class Pad {
+  constructor(run) {
+    Object.assign(this, { run, T: run.state.T, eta: START[0], gamma: START[1], bars: [0, 0, 0], goal: [0, 0, 0], token: 0, marks: [], ring: null, guess: null, live: false, want: null, job: null, ref: null });
+    this.T.extra.push((g) => this.draw(g));
+    run.tick(() => this.tick());
+  }
+
+  geo() {
+    const p = this.T.panel, split = p.x + p.w * 0.5;
+    return { p, pad: { x: p.x + 28, y: p.y + 10, w: split - p.x - 40, h: p.h - 36 }, bars: { x: split + 4, y: p.y + 24, w: p.x + p.w - split - 14, h: p.h - 50 } };
+  }
+
+  xOf(eta) { const { pad } = this.geo(); return pad.x + (pad.w * (eta - ETA[0])) / (ETA[1] - ETA[0]); }
+  yOf(gamma) { const { pad } = this.geo(); return pad.y + pad.h - pad.h * ((gamma - NOISE[0]) / (NOISE[1] - NOISE[0])); }
+
+  // The column of a bar. A small bar is drawn taller, by its own scale.
+  column(i) { const { bars } = this.geo(), n = this.ref.names.length, w = bars.w / n; return { x: bars.x + w * i + w / 2, w: Math.min(w * 0.56, 40), top: bars.y, base: bars.y + bars.h, max: this.ref.max[i] }; }
+
+  place(x, y) {
+    const { pad } = this.geo(), step = 0.02, c = (v, a, b) => Math.max(a, Math.min(b, v));
+    let eta = c(ETA[0] + ((x - pad.x) / pad.w) * (ETA[1] - ETA[0]), ...ETA), gamma = c(((pad.y + pad.h - y) / pad.h) * NOISE[1], ...NOISE);
+    eta = Math.round(eta / step) * step; gamma = Math.round(gamma / step) * step;
+    if (this.ring && Math.hypot(this.xOf(this.ring.eta) - x, this.yOf(this.ring.gamma) - y) < 26) { eta = this.ring.eta; gamma = this.ring.gamma; }
+    this.eta = eta; this.gamma = gamma;
+    if (this.live) this.want = [eta, gamma];
+  }
+
+  onRing() { return this.ring && this.eta === this.ring.eta && this.gamma === this.ring.gamma; }
+
+  hit(x, y) {
+    if (this.locked) return null;
+    const { pad } = this.geo(), c = this.column(this.ref.names.length - 1);
+    if (this.guessing) return x > c.x - 44 && x < c.x + 44 && y > c.top - 22 && y < c.base + 22 ? 'guess' : null;
+    return x > pad.x - 22 && x < pad.x + pad.w + 22 && y > pad.y - 16 && y < pad.y + pad.h + 16 ? 'pad' : null;
+  }
+
+  bind(on) {
+    const { run } = this, set = (x, y) => { const c = this.column(this.ref.names.length - 1); this.guess = Math.round(Math.max(0, Math.min(c.max, ((c.base - y) / (c.base - c.top)) * c.max)) * 500) / 500; };
+    return run.board({
+      at: (x, y) => this.hit(x, y),
+      hover: (t) => { this.lit = t; },
+      grab: (t, x, y) => { this.token += 1; this.run.state.C.token += 1; if (t === 'pad') this.place(x, y); else set(x, y); },
+      move: (t, x, y) => { if (t === 'pad') this.place(x, y); else set(x, y); },
+      drop: (t) => on(t),
+      tap: (t) => on(t),
+      cancel: () => {},
+    });
+  }
+
+  // Level 1's preview, a slice of each frame. The newest place of the dot wins.
+  tick() {
+    if (this.want && !this.job) {
+      const { C } = this.run.state, [e, g] = this.want;
+      this.job = chainRun({ p: SHARE, a: C.a, b: C.b, w: WIDTH, N: PREVIEW, opt: twoOpt(e, g), seed: 3, slice: 8 });
+      this.jobAt = [e, g]; this.want = null;
+    }
+    if (!this.job) return;
+    const end = performance.now() + 5;
+    let r;
+    do { r = this.job.next(); } while (!r.done && performance.now() < end);
+    if (!r.done) return;
+    this.job = null;
+    this.show(r.value, this.jobAt);
+  }
+
+  show(share, at) {
+    this.goal = [1 - share, share];
+    this.run.state.C.rest(share);
+    if (this.marks.length < 420) this.marks.push({ eta: at[0], gamma: at[1], ok: Math.abs(share - SHARE) <= TOL, rare: share / SHARE });
+  }
+
+  draw(g) {
+    if (this.off || !this.ref) return;
+    const { p, pad } = this.geo();
+    g.save();
+    plate(g, p);
+    this.drawPad(g, pad);
+    const n = this.ref.names.length;
+    for (let i = 0; i < n; i += 1) { this.bars[i] += (this.goal[i] - this.bars[i]) * 0.22; this.drawBar(g, i); }
+    g.restore();
+  }
+
+  drawPad(g, pad) {
+    g.fillStyle = 'rgba(255, 255, 255, .55)'; g.strokeStyle = `rgba(${INK}, ${this.lit === 'pad' ? 0.55 : 0.3})`; g.lineWidth = 1;
+    g.beginPath(); g.rect(pad.x, pad.y, pad.w, pad.h); g.fill(); g.stroke();
+    g.setLineDash([2, 3]); g.strokeStyle = `rgba(${INK}, .28)`;
+    g.beginPath(); g.moveTo(this.xOf(1), pad.y); g.lineTo(this.xOf(1), pad.y + pad.h); g.stroke(); g.setLineDash([]);
+    for (const q of this.marks) { g.fillStyle = q.ok ? 'rgba(13, 138, 143, .75)' : `rgba(194, 24, 91, ${0.1 + 0.3 * Math.min(1, q.rare)})`; g.beginPath(); g.arc(this.xOf(q.eta), this.yOf(q.gamma), 3.4, 0, Math.PI * 2); g.fill(); }
+    g.font = '500 12px "Ysabeau Office", sans-serif'; g.fillStyle = SOFT; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    for (const v of [1, 1.5]) g.fillText(v, this.xOf(v), pad.y + pad.h + 13);
+    g.textAlign = 'right'; g.fillText('0', pad.x - 5, this.yOf(0) + 2); g.fillText('1', pad.x - 5, this.yOf(1) + 8);
+    g.font = 'italic 14px "Ysabeau Office", serif'; g.fillStyle = `rgb(${INK})`; g.textAlign = 'left'; g.fillText('η', pad.x + pad.w - 8, pad.y + pad.h + 14); g.fillText('γ', pad.x - 15, pad.y + 30);
+    if (this.ring) {
+      const x = this.xOf(this.ring.eta), y = this.yOf(this.ring.gamma);
+      g.strokeStyle = PLUM; g.lineWidth = 2.4; g.setLineDash([4, 3]); g.beginPath(); g.arc(x, y, 13, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+      g.font = '700 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = PLUM; g.textAlign = x > pad.x + pad.w * 0.6 ? 'right' : 'left'; g.fillText(this.ring.label, x + (x > pad.x + pad.w * 0.6 ? -19 : 19), y + (y > pad.y + pad.h * 0.5 ? -8 : 16));
+    }
+    const x = this.xOf(this.eta), y = this.yOf(this.gamma);
+    g.fillStyle = `rgba(${INK}, .14)`; g.beginPath(); g.arc(x, y, 18, 0, Math.PI * 2); g.fill();
+    g.fillStyle = `rgb(${INK})`; g.beginPath(); g.arc(x, y, this.lit === 'pad' ? 11 : 9.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fbfbf8'; g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill();
+  }
+
+  drawBar(g, i) {
+    const c = this.column(i), { ref } = this, Y = (v) => c.base - (c.base - c.top) * (v / c.max), { x, w } = c, n = ref.names.length;
+    g.fillStyle = 'rgba(29, 33, 65, .07)'; g.fillRect(x - w / 2, c.top, w, c.base - c.top);
+    if (!this.hideBars) { g.fillStyle = ref.colors[i]; g.globalAlpha = 0.82; const t = Y(Math.min(c.max, this.bars[i])); g.fillRect(x - w / 2, t, w, c.base - t); g.globalAlpha = 1; }
+    // The reference with its error, and the runs behind it if there are any.
+    const a = Y(Math.min(c.max, ref.pop[i] + ref.se[i])), b = Y(Math.max(0, ref.pop[i] - ref.se[i])), mid = Y(ref.pop[i]);
+    g.fillStyle = 'rgba(29, 33, 65, .16)'; g.fillRect(x - w / 2 - 5, a, w + 10, b - a);
+    g.strokeStyle = `rgb(${INK})`; g.lineWidth = 2; g.beginPath(); g.moveTo(x - w / 2 - 5, mid); g.lineTo(x + w / 2 + 5, mid); g.stroke();
+    g.fillStyle = `rgb(${INK})`;
+    for (const r of ref.runs ?? []) { g.beginPath(); g.arc(x + w / 2 + 9, Y(Math.min(c.max, r[i])), 1.8, 0, Math.PI * 2); g.fill(); }
+    g.textAlign = 'center'; g.font = '700 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = `rgb(${INK})`;
+    if (!this.hideBars) g.fillText(`${(100 * this.bars[i]).toFixed(ref.max[i] < 1 ? 1 : 0)}%`, x, c.top - 6);
+    g.font = '500 12px "Ysabeau Office", sans-serif'; g.fillStyle = SOFT; g.fillText(ref.names[i], x, c.base + 14);
+    if (ref.max[i] < 1) { g.font = '500 11px "Ysabeau Office", sans-serif'; g.fillText(`×${Math.round(1 / ref.max[i])}`, x, c.base + 26); }
+    if (i === n - 1 && this.guess !== null) {
+      const v = Y(this.guess);
+      g.strokeStyle = PLUM; g.lineWidth = 3; g.beginPath(); g.moveTo(x - w / 2 - 7, v); g.lineTo(x + w / 2 + 7, v); g.stroke();
+      g.fillStyle = PLUM; g.beginPath(); g.arc(x + w / 2 + 13, v, this.lit === 'guess' ? 11 : 9.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = '700 11px "Ysabeau Office", sans-serif'; g.textBaseline = 'middle'; g.fillText('?', x + w / 2 + 13, v + 0.5); g.textBaseline = 'alphabetic';
+    }
+  }
+
+  padHint(eta = 1, gamma = 0) { return { from: () => ({ x: this.xOf(this.eta), y: this.yOf(this.gamma) }), to: () => ({ x: this.xOf(eta), y: this.yOf(gamma) }) }; }
+  barHint() { return { from: () => { const c = this.column(this.ref.names.length - 1); return { x: c.x + 12, y: c.base - 8 }; }, to: () => { const c = this.column(this.ref.names.length - 1); return { x: c.x + 12, y: c.top + 30 }; } }; }
+}
+
+const pc = (v, d = 1) => `${(100 * v).toFixed(d)}%`;
+const caption = (run, text) => run.state.T.extra.push((g) => { if (run.state.caption === text) { const b = run.state.T.box; g.save(); g.font = '500 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = SOFT; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillText(text, b.x + b.w / 2, b.y + 13); g.restore(); } });
+const MIX = 'Exact mixture, not Boltz', RUN = 'Real simulation, not Boltz';
+
+async function level1(run) {
+  const { P, T, C } = run.state, { ui, sound } = run;
+  run.level(GOALS[0], ['real', 'game', 'model']);
+  caption(run, MIX); run.state.caption = MIX;
+  Object.assign(P, { eta: START[0], gamma: START[1], live: true, locked: false, ring: null, guessing: false, guess: null, hideBars: false, off: false, marks: [] });
+  P.ref = { names: ['closed', 'open'], colors: [ULTRA, TEAL], pop: [1 - SHARE, SHARE], se: [TOL, TOL], max: [1, 0.25] };
+  P.bars = [1 - SHARE, 0]; P.goal = [1 - SHARE, 0];
+  T.setPanel(190, 0.4, 232); T.setSpan(78, 0);
+  C.on = true; C.rest(SHARE); P.want = START;
+  run.probe = { P, C };
   await run.until((done) => {
-    let busy = false;
-    const sl = ui.slider({ label: 'Minor', min: 3, max: 50, step: 1, value: 10, id: 'share', format: (v) => `${v}%`, onInput: (v) => { p = v / 100; ui.read('r-p', `${v}%`); pools(p); } });
-    const go2 = ui.button('Run', async (b) => {
-      if (busy) return;
-      busy = true; b.disabled = true;
-      const out = await run.budget(twoState({ p, n: 20000, seed: 1 + runs }), null, 9);
-      pools(out);
-      busy = false; b.disabled = false; sound.drip?.(0.6);
-      ui.read('r-o', pct(out, out < 0.1 ? 1 : 0));
-      const power = p > 0.48 ? NaN : oddsPower(p, out);
-      ui.read('r-k', Number.isFinite(power) ? power.toFixed(1) : '–');
-      const k = xs.findIndex((v) => v >= p);
-      if (k < 0) { xs.push(p); ys.push(out); } else if (xs[k] === p) ys[k] = out; else { xs.splice(k, 0, p); ys.splice(k, 0, out); }
-      runs += 1; run.state.twoRuns = { xs, ys }; draw();
-      if (xs.length >= 3 && !document.getElementById('next')) { ui.ctrl$.append(ui.button('Next', () => done(), { id: 'next' })); ui.fit(); }
-    }, { id: 'run2' });
-    ui.ctrl(c, sl, go2);
-    requestAnimationFrame(draw);
+    run.scoped(P.bind(run.safe(async () => {
+      P.want = null;
+      P.locked = true;
+      const seed = 5, out = await C.go(SHARE, twoOpt(P.eta, P.gamma), seed);
+      P.locked = false;
+      if (out === null || !run.alive) return;
+      P.goal = [1 - out, out];
+      if (P.marks.length < 420) P.marks.push({ eta: P.eta, gamma: P.gamma, ok: Math.abs(out - SHARE) <= TOL, rare: out / SHARE });
+      if (Math.abs(out - SHARE) <= TOL) { P.locked = true; T.flash(true); done(); return; }
+      T.flash(false); sound.soft();
+      ui.feedback(`Open ${pc(out)}, true ${pc(SHARE, 0)}.`, 'bad');
+    })));
+    run.scoped(run.idle(() => P.padHint()));
   });
-  ui.ctrl();
-  await run.line('The grey line is a faithful sampler. The run sits below it, and the odds come out raised to a power near 1.7. That does not change with the separation of the states, above about 5 Å.');
-  await run.line('For a fixed free-energy gap, that power is what cooling to about 1/1.7 of the temperature would do. This fits the Boltz documentation, which says a lower step scale gives more diversity. Boltz-1\'s settings give a power near 2.2.');
-  T.clear(); T.showMap = true;
+  await run.won(`Open ${pc(P.goal[1])}, true ${pc(SHARE, 0)}.`, 1);
 }
 
-async function whatDecides(run) {
-  const { ui } = run, { ref } = run.state, d = rama(), K = adk();
-  ui.tags('game', 'real');
-  run.state.dataPaint();
-  const pdb = populations(d.train.x, d.train.y);
-  ui.reads([{ value: pp(ref), label: 'one peptide, MD at 300 K' }, { value: pp(pdb), label: 'general residues in the PDB' }]);
-  await run.line('Next, ask what the model is even trying to reproduce. Same mathematics, two data sets, and very different answers. A model trained on one will return that one.');
-  await run.line('Look back at chapter 5. The loss compares a guess with a training structure. In Boltz too, no energy appears in it, no temperature, and no exp(−U/kT). The model learns from whichever data it is fed.');
-  await run.line('The PDB-wide map is not one molecule\'s Boltzmann distribution. It mixes thousands of residues in folded proteins, each held in place by its neighbours.');
-  ui.reads([{ value: `${K.counts.closed} closed`, label: 'E. coli adenylate kinase chains, PDB' }, { value: `${K.counts.open} open`, label: 'same protein' }]);
-  await run.line(`It gets sharper for one protein. Among the ${K.counts.chains} complete chains of this enzyme we found, ${K.counts.closed} are closed. That records which ligands people chose to crystallise with, and not how much time the protein spends closed.`);
-  ui.tags('paper');
-  await run.line('Boltz-1 trained on one structure per system. Boltz-2 also trains on NMR and molecular-dynamics ensembles, drawing one conformer at random each time, and adds distance and B-factor targets from the ensemble. That is a real step toward thermal data, and it does not on its own make samples Boltzmann weighted.');
-  await run.line('Those simulations are also short: 8 ns in MISATO, the last 10 ns of 100 in ATLAS, and the last 10% of runs of up to 500 ns in mdCATH. Runs like that rarely cross slow barriers, so they cannot hold the true weights of slow states.');
+async function runSampler(run, opt) {
+  const { P, pour, S, F, Dfast, Mol } = run.state, my = (P.token += 1), rng = makeRng(SEED);
+  pour.start(rng, F.mix.mx, F.mix.my, SMAX);
+  // Pour paints through this: every frame the droplets move, the molecules follow them.
+  pour.tank = { setZoom: () => {}, paint: (x, y, n) => { Mol.set(x, y, n); } };
+  const ok = await pour.run(run, S, (p, g, i, k) => stochasticStep(p, S[k], S[k + 1], Dfast, g, rng, opt), { seconds: 1.1, halt: () => my !== P.token });
+  if (!ok || !run.alive) return null;
+  const pop = populations(pour.x, pour.y, pour.n);
+  P.goal = pop;
+  run.sound.drip?.(0.7); run.sound.drip?.(0.5, 0.09); run.sound.drip?.(0.35, 0.18);
+  return pop;
 }
 
-async function reweight(run) {
-  const { ui } = run, { m, ref } = run.state;
-  ui.tags('paper');
-  ui.reads([]);
-  await run.line('Suppose you did want true populations. If you know both the energy of each sample and the probability with which it was generated, you can correct the crowd: give each sample the weight p/q. This is the idea of a <b>Boltzmann generator</b>.');
-  ui.tags('game', 'model');
-  ui.reads([{ value: pp(ref), label: 'simulation' }, { id: 'r-a', value: '–', label: 'as sampled' }, { id: 'r-b', value: '–', label: 'after weights' }, { id: 'r-e', value: '–', label: 'share of samples still useful' }]);
-  ui.say('Here we can cheat, with two numbers on a histogram: the true p from the long simulation, and q from the samples. <b>Sample with Boltz-2\'s settings, then reweight.</b>');
-  await run.until((done) => ui.ctrl(ui.button('Sample and reweight', () => { ui.ctrl(); done(); }, { id: 'rew' })));
-  const r = await go(run, { eta: 1.5, gamma0: 0.8, gammaMin: 4, lambda: 1.003 }, { seconds: 1.4 });
-  if (!r) return;
-  const G = m.grid, tot = m.hist.reduce((a, b) => a + b, 0), cell = (x, y) => Math.min(G - 1, Math.max(0, Math.floor((x + 180) / 5))) + G * Math.min(G - 1, Math.max(0, Math.floor((y + 100) / 5)));
-  const q = new Float64Array(G * G), n = r.X.length;
-  for (let i = 0; i < n; i += 1) q[cell(r.X[i], r.Y[i])] += 1;
-  let s = 0, s2 = 0;
-  const w = new Float64Array(n), c = [0, 0, 0];
-  for (let i = 0; i < n; i += 1) { const k = cell(r.X[i], r.Y[i]); w[i] = (m.hist[k] / tot) / (q[k] / n); s += w[i]; s2 += w[i] * w[i]; c[r.X[i] > 0 ? 2 : r.Y[i] > 45 ? 1 : 0] += w[i]; }
-  const p2 = c.map((v) => v / s), ess = (s * s) / s2 / n;
-  run.state.rew = { p2, ess };
-  ui.read('r-a', pp(r.pop)); ui.read('r-b', pp(p2)); ui.read('r-e', pct(ess));
-  await run.line(`The weights pull it back toward the truth, to ${pct(p2[2], 1)} in the rare region in this run. That is about 1% with 4,000 droplets, and higher with more droplets.`);
-  await run.line(`Only ${pct(ess)} of the samples still count, and places never sampled stay empty. Weights cannot create what the sampler missed.`);
-  ui.tags('paper');
-  await run.line('And you could only do this because you had p, from a long simulation, and q, from a histogram in two dimensions. For a protein, Boltz gives you no energy for a sample, and no density either. Boltzmann generators are built to supply both, using invertible networks and a force field.');
-  await run.line('Song and colleagues showed that a diffusion model\'s density can be computed by integrating along the ODE. That holds for a deterministic flow. Algorithm 18 adds noise and fresh rotations at each step, so it has no such formula. It is not part of Boltz.');
+async function level2(run) {
+  const { P, T, C, m } = run.state, { ui, sound } = run;
+  run.level(GOALS[1], ['real', 'game', 'model', 'paper']);
+  caption(run, RUN); run.state.caption = RUN;
+  C.on = false; C.bundle.hide();
+  const Mol = run.state.Mol ??= new Peptide(run);
+  Mol.on = true;
+  run.world.mood = { flow: 0.0004, decay: 0.7, trail: 0.25 };
+  Object.assign(P, { eta: 1, gamma: 0, live: false, locked: false, ring: null, guessing: false, guess: null, hideBars: true, off: false, marks: [], want: null, job: null });
+  P.ref = { names: REGIONS, colors: [MAG, ULTRA, TEAL], pop: m.pop, se: m.se, runs: m.perRun, max: [1, 1, 0.1] };
+  P.bars = [0, 0, 0]; P.goal = [0, 0, 0];
+  T.setPanel(190, 0.4, 232); T.setSpan(12, 0.4);
+  Mol.set(m.x, m.y, m.n);
+  run.probe = { P, Mol };
+  await run.state.field;
+  await run.until((done) => {
+    let r = 0, hits = 0;
+    const begin = (i) => {
+      r = i;
+      P.ring = ROUNDS[i]; P.guessing = false; P.guess = null; P.hideBars = true; P.locked = false;
+      Mol.set(m.x, m.y, m.n);
+      ui.rounds(i, ROUNDS.length);
+    };
+    run.scoped(P.bind(run.safe(async (t) => {
+      if (t === 'pad') {
+        if (P.onRing()) { P.guessing = true; P.guess = 0.05; ui.feedback('Now guess.'); sound.drip?.(0.6); }
+        return;
+      }
+      P.locked = true; P.guessing = false;
+      const guess = P.guess, pop = await runSampler(run, padOpt(P.eta, P.gamma));
+      if (!pop || !run.alive) return;
+      P.hideBars = false;
+      const hit = Math.abs(pop[2] - guess) <= GUESS;
+      if (hit) hits += 1;
+      T.flash(hit);
+      if (hit) sound.drip?.(0.8); else sound.soft();
+      ui.feedback(`${ROUNDS[r].label}: ${pc(pop[2])}.`, hit ? 'good' : 'bad');
+      ui.rounds(r + 1, ROUNDS.length);
+      await run.pause(1900);
+      if (!run.alive) return;
+      if (r + 1 < ROUNDS.length) { ui.feedback(''); begin(r + 1); return; }
+      if (hits >= 2) { P.locked = true; done(); return; }
+      hits = 0;
+      ui.feedback('Again.', 'bad');
+      begin(0);
+    })));
+    run.scoped(run.idle(() => (P.guessing ? P.barHint() : P.padHint(P.ring.eta, P.ring.gamma))));
+    begin(0);
+  });
+  await run.won('Two knobs, both changed in Boltz-2.', 2);
+  Mol.on = false; Mol.bundle.hide();
+  run.world.mood = { flow: 0.0011, decay: 0.92, trail: 0.9 };
 }
 
-async function ensembles(run) {
-  const { ui } = run, B = boltzRun();
-  ui.tags('paper');
-  ui.reads([]);
-  await run.line('So what is known about real ensembles? AlphaFold3\'s authors are plain: multiple seeds "do not produce an approximation of the solution ensemble".');
-  await run.line('<b>Boltz-2</b>, with molecular-dynamics conditioning, predicts which residues fluctuate. RMSF is how far each residue wanders. Per-target correlation with simulated RMSF was 0.79 on mdCATH and 0.85 on ATLAS, against 0.72 and 0.76 with X-ray conditioning. BioEmu scored 0.77 and 0.83.');
-  await run.line('That measures local flexibility. It is not a test of the populations of metastable states. The authors say that diversity stayed below that of BioEmu and AlphaFlow, that the model often fails to capture large conformational changes, and that the MD set was relatively small.');
-  await run.line('<b>BioEmu</b> aims straight at this. It trains on over 200 ms of MD, reweighted toward equilibrium where possible, and fine-tunes on measured stabilities. Models fine-tuned on 11 fast folders came within 0.74 kcal/mol of the MD free-energy surface of the twelfth, and the public model predicts folding free energies near 1 kcal/mol.');
-  await run.line('Its authors still name the limit: it generates distributions "entirely empirically", with no energy function behind them, so its samples cannot be reweighted directly. It covers single chains near 300 K, and it does not model dynamics.');
-  ui.tags('boltz', 'game');
-  const ns = ['seed 43', 'second sample', 'step scale 1.0', '40 steps'];
-  const base = B.finals['seed 42'];
-  ui.reads(ns.map((k) => ({ value: `${fmt(fitRmsd(B.finals[k], base), 1)} Å`, label: k })));
-  await run.line('What then does the spread of Boltz samples mean? These are real runs of our 136-residue protein, each compared with the first. A new seed or sample moved it more than these new settings did. That spread mixes the model\'s uncertainty with sampler choices.');
-  await run.line('It may overlap with thermal motion, and sometimes it does, but nothing makes it equal. MIT\'s announcement says Boltz-1 is named after the Boltzmann distribution. That is where the name came from. It is no claim about its samples.');
+// Level 3. The chart's axes are odds, so that a power is a straight line.
+class Odds {
+  constructor(run) {
+    Object.assign(this, { run, T: run.state.T, points: [], p: 0.3, y: 0.3, curve: null, locked: false });
+    this.T.extra.push((g) => this.draw(g));
+  }
+
+  geo() {
+    const p = this.T.panel, L = p.x + 44, R = p.x + p.w - 16, up = p.y + 12, base = p.y + p.h - 28, a = logit(0.02), b = logit(TILT);
+    return { p, L, R, up, base, X: (q) => L + ((R - L) * (logit(q) - a)) / -a, Y: (q) => base - ((base - up) * (logit(q) - b)) / -b, inv: (y) => { const v = b + (-b * (base - y)) / (base - up), o = 10 ** v; return o / (1 + o); } };
+  }
+
+  hit(x, y) { if (this.locked) return null; const G = this.geo(); return x > G.L - 30 && x < G.R + 16 && y > G.up - 14 && y < G.base + 22 ? 'dot' : null; }
+
+  bind(on) {
+    const set = (y) => { const G = this.geo(); this.y = G.inv(Math.max(G.up, Math.min(G.base, y))); };
+    return this.run.board({ at: (x, y) => this.hit(x, y), cursor: () => 'ns-resize', hover: (t) => { this.lit = t; }, grab: (t, x, y) => set(y), move: (t, x, y) => set(y), drop: () => on(), tap: () => on(), cancel: () => {} });
+  }
+
+  draw(g) {
+    const G = this.geo(), { p, L, R, up, base, X, Y } = G;
+    g.save();
+    plate(g, p);
+    g.strokeStyle = `rgba(${INK}, .22)`; g.lineWidth = 1; g.beginPath(); g.moveTo(L, up); g.lineTo(L, base); g.lineTo(R, base); g.stroke();
+    g.font = '500 12px "Ysabeau Office", sans-serif'; g.fillStyle = SOFT; g.textBaseline = 'alphabetic';
+    g.textAlign = 'right';
+    for (const v of [0.5, 0.1, 0.01, 0.001]) { g.fillText(`${100 * v}%`, L - 5, Y(v) + 4); g.strokeStyle = `rgba(${INK}, .09)`; g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(R, Y(v)); g.stroke(); }
+    g.textAlign = 'center';
+    for (const v of [0.02, 0.05, 0.1, 0.2, 0.5]) g.fillText(`${100 * v}%`, X(v), base + 14);
+    g.textAlign = 'left'; g.fillText('true share', L + 4, p.y + p.h - 2); g.strokeStyle = 'rgba(244, 245, 243, .9)'; g.lineWidth = 3.5; g.strokeText('after sampling', L + 6, up + 12); g.fillText('after sampling', L + 6, up + 12);
+    g.textAlign = 'right'; g.fillText('faithful', X(0.08) - 6, Y(0.08) - 6);
+    g.strokeStyle = `rgba(${INK}, .5)`; g.lineWidth = 1.6; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(X(0.02), Y(0.02)); g.lineTo(X(0.5), Y(0.5)); g.stroke(); g.setLineDash([]);
+    if (this.curve) {
+      g.strokeStyle = PLUM; g.lineWidth = 2.6; g.beginPath();
+      for (let k = 0; k <= 40; k += 1) { const q = 0.02 * (0.5 / 0.02) ** (k / 40), o = (q / (1 - q)) ** this.curve, v = o / (1 + o), c = Math.max(up, Y(Math.max(v, TILT))); if (k) g.lineTo(X(q), c); else g.moveTo(X(q), c); }
+      g.stroke();
+      g.font = '700 13px "Ysabeau Office", sans-serif'; g.fillStyle = PLUM; g.textAlign = 'left'; g.fillText(`odds to the power ${fmt(this.curve, 1)}`, L + 10, base - 10);
+    }
+    for (const q of this.points) { g.fillStyle = PLUM; g.beginPath(); g.arc(X(q.p), Y(Math.max(q.out, TILT)), 5, 0, Math.PI * 2); g.fill(); }
+    if (!this.curve && !this.locked) {
+      const x = X(this.p), y = Y(this.y);
+      g.strokeStyle = `rgba(${INK}, .4)`; g.lineWidth = 1; g.beginPath(); g.moveTo(x, up); g.lineTo(x, base); g.stroke();
+      g.fillStyle = `rgba(${INK}, .14)`; g.beginPath(); g.arc(x, y, 19, 0, Math.PI * 2); g.fill();
+      g.fillStyle = `rgb(${INK})`; g.beginPath(); g.arc(x, y, this.lit ? 12 : 10.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fbfbf8'; g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 3.5, y - 2); g.lineTo(x - 3.5, y - 2); g.closePath(); g.moveTo(x, y + 6); g.lineTo(x + 3.5, y + 2); g.lineTo(x - 3.5, y + 2); g.closePath(); g.fill();
+      g.font = '700 12.5px "Ysabeau Office", sans-serif'; g.fillStyle = `rgb(${INK})`; g.textAlign = x > (L + R) / 2 ? 'right' : 'left'; g.fillText(this.y < 0.1 ? `${(100 * this.y).toFixed(1)}%` : `${(100 * this.y).toFixed(0)}%`, x + (x > (L + R) / 2 ? -22 : 22), y + 4);
+    }
+    g.restore();
+  }
+
+  hint() { return { from: () => { const G = this.geo(); return { x: G.X(this.p), y: G.Y(this.y) }; }, to: () => { const G = this.geo(); return { x: G.X(this.p), y: G.Y(this.y) + 56 }; } }; }
 }
 
-async function useThem(run) {
-  const { ui } = run;
-  ui.tags('paper');
-  ui.reads([]);
-  await run.choose('How would you use 100 Boltz samples? This one is sound or unsound: "Samples show two conformations I had not considered, so I will test both."', [
-    { text: 'Sound', right: true, why: 'Yes. Samples are good at proposing structures. Testing them is exactly what they are for.' },
-    { text: 'Unsound', why: 'Using samples as ideas to test is the safest use there is.' },
-  ]);
-  await run.choose('"80 samples are closed and 20 open, so the closed state is 0.8 kcal/mol lower."', [
-    { text: 'Sound', why: 'Nothing ties those counts to exp(−F/kT). You saw a sampler knob alone cut a population by half.' },
-    { text: 'Unsound', right: true, why: 'Yes. The arithmetic is fine, and the premise is not. Frequencies need a check before they can be read as populations.' },
-  ]);
-  await run.choose('"I start molecular dynamics from each sample, check that the trajectories connect the states, then build a Markov model and reweight."', [
-    { text: 'Sound', right: true, why: 'Yes, and only with that check. Unconnected states cannot be weighed against each other. BioEmu\'s authors suggest starting MD from samples. The Markov model is a further step.' },
-    { text: 'Unsound', why: 'This is a good use, as long as the trajectories connect the states: the populations then come from a force field, with its own known errors.' },
-  ]);
-}
-
-async function checkStage(run) {
-  await check(run, [
-    {
-      q: 'New case. You run Boltz-2 with --method md and 100 seeds on a protein with a known 90:10 two-state equilibrium, and get 60:40. What is the honest conclusion?',
-      options: [
-        { text: 'The experiment must be wrong, because the MD conditioning samples the true ensemble.', why: 'Nothing guarantees that. The MD results shown were about local flexibility, not populations.' },
-        { text: 'The model found both states, which is useful. Its frequencies did not match, and were never promised to.', right: true, why: 'Yes. Finding the states is a real result. The share has to come from elsewhere.' },
-        { text: 'Adding more seeds will bring it to 90:10.', why: 'More seeds shrink the sampling noise around whatever the model and sampler give. They do not remove a bias.' },
-      ],
-    },
-    {
-      q: 'What is the one thing that a Boltzmann generator has, and that Boltz lacks, for getting true populations?',
-      options: [
-        { text: 'A bigger network.', why: 'Size is not the issue. Boltz is far bigger.' },
-        { text: 'A connection to an energy: the energy of each sample, and the probability of having generated it, so that it can be reweighted.', right: true, why: 'Yes. Both are needed for weights exp(−u)/q. Without them, a sample carries no thermodynamic meaning of its own.' },
-        { text: 'More training data from the PDB.', why: 'More crystal structures would not supply an energy.' },
-      ],
-    },
-  ]);
+async function level3(run) {
+  const { P, T, C } = run.state, { ui, sound } = run;
+  run.level(GOALS[2], ['real', 'game', 'model']);
+  caption(run, MIX); run.state.caption = MIX;
+  P.off = true; P.live = false; P.want = null; P.job = null; P.token += 1;
+  if (run.state.Mol) { run.state.Mol.on = false; run.state.Mol.bundle.hide(); }
+  run.world.mood = { flow: 0.0011, decay: 0.92, trail: 0.9 };
+  C.on = true; T.setSpan(78, 0); T.setPanel(236, 0, 300);
+  const O = run.state.O = new Odds(run);
+  run.probe = { O, C };
+  ui.feedback('Our own calculation, not a paper\'s.');
+  await run.until((done) => {
+    let set = 0, at = 0, seed = 1;
+    const deal = () => {
+      const p = SHARES[set % SHARES.length][at];
+      O.p = p; O.y = p; O.locked = false;
+      C.rest(p);
+      ui.rounds(at, 3);
+    };
+    run.scoped(O.bind(run.safe(async () => {
+      O.locked = true;
+      const p = O.p, guess = O.y;
+      seed += 1;
+      const out = await C.go(p, twoOpt(1.5, 0.8), seed);
+      if (out === null || !run.alive) return;
+      O.points.push({ p, out });
+      sound.drip?.(0.6);
+      const hit = oddsMiss(guess, out) <= ODDS;
+      T.flash(hit);
+      if (hit) {
+        at += 1;
+        sound.drip?.(0.8, 0.1);
+        ui.rounds(at, 3);
+        if (at === 3) { done(); return; }
+        ui.feedback(`${pc(p, p < 0.1 ? 1 : 0)} became ${pc(out, out < 0.1 ? 1 : 0)}. Hit.`, 'good');
+      } else {
+        sound.soft();
+        at = 0; set += 1;
+        ui.feedback(`${pc(p, p < 0.1 ? 1 : 0)} became ${pc(out, out < 0.1 ? 1 : 0)}. Miss.`, 'bad');
+      }
+      await run.pause(1700);
+      if (!run.alive) return;
+      deal();
+    })));
+    run.scoped(run.idle(() => O.hint()));
+    deal();
+  });
+  const fit = O.points.filter((q) => q.out > 0).map((q) => oddsPower(q.p, q.out));
+  O.curve = fit.reduce((a, b) => a + b, 0) / fit.length;
+  await run.won('Rarer states shrink more.', 3, 3200);
 }
