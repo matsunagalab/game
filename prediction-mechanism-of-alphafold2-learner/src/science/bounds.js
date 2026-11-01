@@ -17,6 +17,13 @@ export function makeBounds(n, { lower = 3.2, step = 3.8, nums = null } = {}) {
   return { n, U, L };
 }
 
+// A table that knows nothing yet: no chain, only that two residues cannot overlap. Chapter 4's puzzles start from this.
+export function emptyBounds(n, { lower = 3.2 } = {}) {
+  const U = new Float32Array(n * n).fill(Infinity), L = new Float32Array(n * n).fill(lower);
+  for (let i = 0; i < n; i += 1) { U[i * n + i] = 0; L[i * n + i] = 0; }
+  return { n, U, L };
+}
+
 // One restraint on one pair. It tightens and never loosens.
 export function restrain(b, i, j, lo, hi) {
   const { n, U, L } = b;
@@ -48,6 +55,51 @@ export function smooth(b) {
     }
   }
   return changed;
+}
+
+// One third residue k: every pair reads its two other sides through k, and only tightens. This is one turn of the
+// outer loop of smooth(), so taking every k once gives what smooth() gives.
+export function throughThird(b, k) {
+  const { n, U, L } = b, kr = k * n;
+  let changed = 0;
+  for (let i = 0; i < n; i += 1) {
+    if (i === k) continue;
+    const ir = i * n, uik = U[ir + k], lik = L[ir + k];
+    for (let j = i + 1; j < n; j += 1) {
+      if (j === k) continue;
+      const ukj = U[kr + j], ljk = L[kr + j];
+      let u = U[ir + j], l = L[ir + j], moved = false;
+      if (uik + ukj < u - 1e-4) { u = uik + ukj; moved = true; }
+      const a = lik - ukj, c = ljk - uik;
+      if (a > l + 1e-4) { l = a; moved = true; }
+      if (c > l + 1e-4) { l = c; moved = true; }
+      if (moved) { U[ir + j] = U[j * n + i] = u; L[ir + j] = L[j * n + i] = l; changed += 1; }
+    }
+  }
+  return changed;
+}
+
+// The shortest list of third residues that makes solved(b) true, breadth first. The answer is computed, never stored.
+export function fewestThirds(b, solved, { most = 5 } = {}) {
+  const { n } = b;
+  let layer = [{ b, path: [] }];
+  for (let depth = 0; depth <= most; depth += 1) {
+    const next = [], seen = new Set();
+    for (const { b: state, path } of layer) {
+      if (solved(state)) return path;
+      if (depth === most) continue;
+      for (let k = 0; k < n; k += 1) {
+        const c = copyBounds(state);
+        if (!throughThird(c, k)) continue;
+        const key = c.U.join() + c.L.join();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ b: c, path: [...path, k] });
+      }
+    }
+    layer = next;
+  }
+  return null;
 }
 
 // The pairs whose lower bound has passed their upper bound: no shape can satisfy them.

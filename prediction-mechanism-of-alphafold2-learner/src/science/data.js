@@ -27,15 +27,26 @@ export function structure(s) {
   return out;
 }
 
-export function loadMSA() {
-  const { N, L, letters } = bundle.msa, bits = b64(letters), X = new Uint8Array(N * L);
+function letters5({ N, L, letters }) {
+  const bits = b64(letters), X = new Uint8Array(N * L);
   let bit = 0;
   for (let i = 0; i < N * L; i += 1) {
     let v = 0;
     for (let k = 0; k < 5; k += 1) { v = (v << 1) | ((bits[bit >> 3] >> (7 - (bit & 7))) & 1); bit += 1; }
     X[i] = v;
   }
-  return { N, L, X, col2res: bundle.col2res, nFamily: bundle.nSeenInFamily, pfam: bundle.pfam };
+  return X;
+}
+
+export function loadMSA() {
+  const { N, L } = bundle.msa;
+  return { N, L, X: letters5(bundle.msa), col2res: bundle.col2res, nFamily: bundle.nSeenInFamily, pfam: bundle.pfam };
+}
+
+// The second family: real SH3 domains, for a case the player has not seen.
+export function loadSH3() {
+  const s = bundle.sh3;
+  return { N: s.N, L: s.L, X: letters5(s), col2res: s.col2res, nFamily: s.nSeenInFamily, pfam: s.pfam };
 }
 
 const cache = new Map();
@@ -48,7 +59,6 @@ export function getModel(acc) {
   return cache.get(acc);
 }
 export const hasModel = (acc) => !!bundle.afdb[acc];
-export const miniCase = () => bundle.mini;
 
 // Real predicted aligned error from AlphaFold DB, in angstroms. Row i, column j: the expected error at j, aligned on i.
 export function getPAE(acc) {

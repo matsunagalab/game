@@ -4,14 +4,16 @@ import { apply, applyInverse, compose, det3, framesOf, frameFromAtoms, IDENTITY,
 import { alignedError, drmsd, fape, lddt, nearestRotation, rmsd, superpose } from '../src/science/metrics.js';
 import { apc, compressColumns, entropy, miFromTable, mutualInformation, reweight, uniformWeights, miMatrix, rankPairs, precision } from '../src/science/msa.js';
 import { invertSPD, meanFieldDCA, partialCorrelations, runAll } from '../src/science/dca.js';
-import { conflicts, makeBounds, restrain, smooth } from '../src/science/bounds.js';
+import { conflicts, copyBounds, emptyBounds, fewestThirds, makeBounds, restrain, smooth, throughThird } from '../src/science/bounds.js';
+import { bestCuts, mapSums, pieceFit, trustFit, withinAcross } from '../src/science/pieces.js';
 import { ipaValuePoint, ipaWeights, maxChange, rawWeights } from '../src/science/ipa.js';
 import { TwoTower } from '../src/science/twotower.js';
 import { Gas, localAtoms } from '../src/science/gas.js';
 import { PoseGas } from '../src/science/pose.js';
 import { evolveStar, evolveTree } from '../src/science/tree.js';
 import { Descent } from '../src/science/descent.js';
-import { closestAtoms, getModel, getPAE, getStructure, loadMSA, columnDistances } from '../src/science/data.js';
+import { CHEY, SH3, TOUCH, TRIANGLE, TRIANGLES } from '../src/science/cases.js';
+import { closestAtoms, getModel, getPAE, getStructure, loadMSA, loadSH3, columnDistances } from '../src/science/data.js';
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`ok  ${name}`); };
@@ -150,6 +152,77 @@ check('an impossible pair of restraints is reported as a conflict', () => {
   restrain(b, 1, 2, 3, 4);
   smooth(b);
   assert.ok(conflicts(b).length > 0);
+});
+
+check('one third residue tightens by the triangle inequality, by hand', () => {
+  // 0-1 is 20 A and 1-2 is 5 A, so through residue 1 the pair 0-2 must lie between 15 and 25.
+  const b = emptyBounds(3);
+  restrain(b, 0, 1, 20, 20);
+  restrain(b, 1, 2, 5, 5);
+  assert.equal(b.U[2], Infinity);
+  assert.ok(throughThird(b, 1) > 0);
+  near(b.U[2], 25, 1e-4); near(b.L[2], 15, 1e-4);
+  assert.equal(throughThird(b, 1), 0, 'a second turn through the same residue changes nothing');
+  assert.equal(b.L[0 * 3 + 2], b.L[2 * 3 + 0], 'the table stays symmetric');
+});
+
+check('taking every third residue once gives exactly what full smoothing gives', () => {
+  const make = () => { const b = emptyBounds(7); restrain(b, 0, 3, 12, 12); restrain(b, 3, 6, 5, 5); restrain(b, 1, 3, 4, 4); restrain(b, 2, 6, 7, 7); restrain(b, 4, 5, 9, 9); return b; };
+  const a = make(), c = make();
+  smooth(a);
+  for (let k = 0; k < 7; k += 1) throughThird(c, k);
+  a.U.forEach((v, i) => assert.ok(v === c.U[i] || Math.abs(v - c.U[i]) < 1e-4, `U ${i}`));
+  a.L.forEach((v, i) => near(v, c.L[i], 1e-4, `L ${i}`));
+});
+
+check('the fewest third residues are found by search, and no shorter list works', () => {
+  // A path 0 - 1 - 2 - 3 with a long first side. Proving 0 and 3 apart needs both middle residues.
+  const b = emptyBounds(5);
+  restrain(b, 0, 1, 30, 30); restrain(b, 1, 2, 5, 5); restrain(b, 2, 3, 6, 6); restrain(b, 0, 4, 9, 9);
+  const apart = (x) => x.L[0 * 5 + 3] > 8, path = fewestThirds(b, apart);
+  assert.equal(path.length, 2);
+  for (let k = 0; k < 5; k += 1) { const c = copyBounds(b); throughThird(c, k); assert.ok(!apart(c), `one move through ${k} must not do it`); }
+  const c = copyBounds(b); path.forEach((k) => throughThird(c, k));
+  near(c.L[3], 19, 1e-3);
+  near(b.L[3], 3.2, 1e-5, 'the search leaves the table alone');
+});
+
+check('piece fit matches a hand-worked map, and a cut in the right place explains all of it', () => {
+  // Two pieces of two residues: 1 inside, 9 between. Off-diagonal cells: 4 ones and 8 nines.
+  const n = 4, e = Float32Array.from([0, 1, 9, 9, 1, 0, 9, 9, 9, 9, 0, 1, 9, 9, 1, 0]), s = mapSums(e, n);
+  near(s.mean, (4 + 72) / 12, 1e-9);
+  near(pieceFit(s, []), 0, 1e-9);
+  near(pieceFit(s, [2]), 1, 1e-9);
+  assert.ok(pieceFit(s, [1]) < 0.5, 'a cut in the wrong place keeps less');
+  assert.deepEqual(bestCuts(s, 1, { end: 1 }).cuts, [2]);
+  const w = withinAcross(s, [2]);
+  near(w.within, 1, 1e-9); near(w.across, 9, 1e-9);
+});
+
+check('the search for cuts agrees with trying every pair of cuts on a real map', () => {
+  const { n, e } = getPAE('P0DP23'), s = mapSums(e, n), found = bestCuts(s, 2);
+  let top = 0;
+  for (let a = 3; a < n - 3; a += 1) for (let b = a + 1; b <= n - 3; b += 1) top = Math.max(top, pieceFit(s, [a, b]));
+  near(found.fit, top, 0.004, 'best pair');
+});
+
+check('a real PAE map splits calmodulin at its linker, and hardly splits CheY', () => {
+  const c = getPAE('P0DP23'), s = mapSums(c.e, c.n), best = bestCuts(s, 1);
+  assert.ok(best.cuts[0] >= 74 && best.cuts[0] <= 84, `cut at ${best.cuts}`);
+  assert.ok(best.fit > 0.7, `fit ${best.fit}`);
+  const w = withinAcross(s, best.cuts);
+  assert.ok(w.across > w.within * 3, `${w.across} ${w.within}`);
+  const a = getPAE('P69441'), wa = withinAcross(mapSums(a.e, a.n), bestCuts(mapSums(a.e, a.n), 1).cuts);
+  assert.ok(wa.across - wa.within < 1.5, 'the same cut finds next to nothing in adenylate kinase');
+});
+
+check('trust fit judges pieces by their mean, and counts strays', () => {
+  const score = [...new Array(50).fill(30), ...new Array(50).fill(95)];
+  near(trustFit(score, []).fit, 0.5, 1e-9);
+  near(trustFit(score, [50]).fit, 1, 1e-9);
+  near(trustFit(score, [40]).fit, 0.9, 1e-9);
+  assert.equal(trustFit(score, [50]).pieces[1].trusted, true);
+  assert.equal(trustFit(score, [50, 50]).pieces.length, 2, 'an empty piece is no piece');
 });
 
 check('frame from atoms follows Algorithm 21', () => {
@@ -321,6 +394,114 @@ check('real PAE loads, is not symmetric, and shows two rigid lobes in calmodulin
   assert.ok(within / w < 5 && across / a > 20, `${within / w} ${across / a}`);
   near(asym / c, 2.7, 0.05, 'mean asymmetry on residues 8 to 148');
   assert.equal(getModel('P0DP23').ca.length, 149);
+});
+
+// What the puzzle chapters say about their real cases.
+const familyOf = (msa, st) => {
+  const { N, L, X, col2res } = msa, w = uniformWeights(N).w, M = miMatrix(X, N, L, w), D = columnDistances(msa, st), all = [];
+  for (let i = 0; i < L; i += 1) for (let j = i + 6; j < L; j += 1) if (col2res[i] >= 0 && col2res[j] >= 0) all.push(M[i * L + j]);
+  all.sort((a, b) => b - a);
+  const col = (num) => col2res.findIndex((r) => r >= 0 && st.nums[r] === num);
+  return { M, D, L, col, strong: all[Math.floor(all.length * 0.02)], mi: (a, b) => M[col(a) * L + col(b)], d: (a, b) => D[col(a) * L + col(b)] };
+};
+const cheFam = familyOf(loadMSA(), che), shFam = familyOf(loadSH3(), getStructure('sh3g'));
+const touching = (f, list) => { const out = []; for (const a of list) for (const b of list) if (a < b && Math.abs(f.col(a) - f.col(b)) >= 6 && f.mi(a, b) >= f.strong && f.d(a, b) < 8) out.push([a, b]); return out; };
+
+check('chapter 1: the given column has one strongest partner in view, and it touches', () => {
+  const { given, residues } = CHEY, f = cheFam;
+  const best = residues.filter((r) => r !== given && Math.abs(f.col(r) - f.col(given)) >= 6).sort((a, b) => f.mi(given, b) - f.mi(given, a))[0];
+  assert.equal(best, 68);
+  assert.ok(f.mi(given, best) >= f.strong && f.d(given, best) < 8, `${f.mi(given, best)} ${f.d(given, best)}`);
+});
+
+check('chapter 1: the window holds three more pairs that touch, and strong pairs that do not', () => {
+  const f = cheFam, t = touching(f, CHEY.residues).filter(([a, b]) => !(a === 56 && b === 68));
+  assert.ok(t.length >= 3, `${t}`);
+  assert.ok(f.mi(89, 119) >= f.strong); near(f.d(89, 119), 16.7, 0.06);
+  assert.ok(f.mi(59, 119) >= f.strong); near(f.d(59, 119), 18.4, 0.06);
+  // Most strong pairs in the family do not touch, as the note says.
+  const { M, D, L, strong } = f; let hit = 0, n = 0;
+  for (let i = 0; i < L; i += 1) for (let j = i + 6; j < L; j += 1) if (D[i * L + j] >= 0 && M[i * L + j] >= strong) { n += 1; if (D[i * L + j] < 8) hit += 1; }
+  assert.ok(hit < n / 2, `${hit} of ${n}`);
+});
+
+check('chapter 1: the new family has its own answers, and a random pair rarely is one', () => {
+  const f = shFam, t = touching(f, SH3.residues);
+  assert.deepEqual(t.map((x) => x.join()).sort(), ['35,43', '44,53']);
+  assert.ok(f.mi(37, 46) >= f.strong); near(f.d(37, 46), 18.8, 0.06);
+  const pairs = (SH3.residues.length * (SH3.residues.length - 1)) / 2;
+  assert.ok(t.length / pairs < 0.03);
+});
+
+check('chapter 1: the rows shown are real, whole rows, and sorted they show the pair', () => {
+  const msa = loadMSA(), { X, L, col2res } = msa, col = (num) => col2res.findIndex((r) => r >= 0 && che.nums[r] === num);
+  for (const s of CHEY.rows) for (const r of CHEY.residues) assert.notEqual(X[s * L + col(r)], 20, 'no gap on view');
+  const seen = new Set(CHEY.rows.map((s) => `${X[s * L + col(56)]},${X[s * L + col(68)]}`));
+  assert.ok(seen.size <= 4, 'the twelve rows fall into a few letter pairs at S56 and L68');
+});
+
+const tri = (spec) => {
+  const st = getStructure(spec.key), idx = spec.nums.map((v) => st.nums.indexOf(v)), n = idx.length, b = emptyBounds(n);
+  const D = (p, q) => { const x = st.cb[st.nums.indexOf(p)], y = st.cb[st.nums.indexOf(q)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  for (const [p, q] of spec.known) { const i = spec.nums.indexOf(p), j = spec.nums.indexOf(q); restrain(b, i, j, D(p, q), D(p, q)); }
+  const [i, j] = spec.pair.map((v) => spec.nums.indexOf(v)).sort((x, y) => x - y);
+  return { b, n, i, j, real: D(...spec.pair), solved: (x) => x.L[i * n + j] > TOUCH };
+};
+
+check('chapter 4: the first triangle cannot touch, and the real distance lies in its range', () => {
+  const D = (p, q) => { const x = che.cb[che.nums.indexOf(p)], y = che.cb[che.nums.indexOf(q)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  const a = D(TRIANGLE.far, TRIANGLE.hinge), b = D(TRIANGLE.hinge, TRIANGLE.end), real = D(TRIANGLE.far, TRIANGLE.end);
+  assert.ok(a - b > TOUCH && real >= a - b && real <= a + b, `${a} ${b} ${real}`);
+});
+
+check('chapter 4: each case has a short real proof, and the real distance survives it', () => {
+  TRIANGLES.forEach((spec, c) => {
+    const { b, n, i, j, real, solved } = tri(spec), path = fewestThirds(b, solved);
+    assert.equal(path.length, [2, 3][c], `case ${c}`);
+    const x = copyBounds(b);
+    path.forEach((k) => throughThird(x, k));
+    assert.ok(x.L[i * n + j] <= real + 1e-3 && x.U[i * n + j] >= real - 1e-3, 'the proof never excludes the truth');
+    for (let k = 0; k < n; k += 1) { const y = copyBounds(b); throughThird(y, k); assert.ok(!solved(y), 'one move is not enough'); }
+    // Every residue in the table, once each: the proof is there for anyone who reads all of it.
+    const all = copyBounds(b); smooth(all); assert.ok(solved(all));
+  });
+});
+
+check('chapter 4: guessing within the move budget rarely proves the last case', () => {
+  const { b, n, solved } = tri(TRIANGLES[1]);
+  let hit = 0, tot = 0;
+  for (let p = 0; p < n; p += 1) for (let q = 0; q < n; q += 1) for (let r = 0; r < n; r += 1) {
+    const x = copyBounds(b); throughThird(x, p); throughThird(x, q); throughThird(x, r); tot += 1; if (solved(x)) hit += 1;
+  }
+  assert.ok(hit / tot < 0.03, `${hit} of ${tot}`);
+});
+
+check('chapter 9: four cuts where pLDDT crosses 70 sort p53, and two do not', () => {
+  const p = getModel('P04637').plddt;
+  assert.ok(trustFit(p, [93, 292, 323, 355]).fit >= 0.94);
+  assert.ok(trustFit(p, [93, 292]).fit < 0.94);
+  assert.ok(trustFit(p, []).fit < 0.8);
+});
+
+check('chapter 9: a wide range of cuts counts on calmodulin, so aim is not the difficulty', () => {
+  const { n, e } = getPAE('P0DP23'), s = mapSums(e, n), best = bestCuts(s, 1);
+  let ok = 0;
+  for (let c = 3; c < n - 3; c += 1) if (pieceFit(s, [c]) >= best.fit * 0.8) ok += 1;
+  assert.ok(ok >= 16 && ok <= 40, `${ok} places count`);
+});
+
+check('chapter 9: the crystal map shows the hinges of adenylate kinase, and AF2\'s own PAE does not', () => {
+  const st = getModel('P69441'), open = getStructure('ake4'), E = alignedError(st.frames, st.ca, open.frames, open.ca), n = 214, s = mapSums(E, n), best = bestCuts(s, 4);
+  // The four cuts land near the edges of the NMP and lid domains of Muller et al. 1996.
+  [30, 60, 122, 160].forEach((edge, k) => assert.ok(Math.abs(best.cuts[k] - edge) <= 10, `${best.cuts}`));
+  const P = getPAE('P69441').e, wP = withinAcross(mapSums(P, n), best.cuts), wE = withinAcross(s, best.cuts);
+  assert.ok(wE.across - wE.within > 3 * (wP.across - wP.within), `${wE.across - wE.within} ${wP.across - wP.within}`);
+  near(P.reduce((a, b) => a + b, 0) / (n * n), 3.2, 0.1, 'mean PAE');
+  // Four random cuts almost never land within reach of all four.
+  const r = rng(99); let hit = 0;
+  for (let t = 0; t < 40000; t += 1) { const c = [0, 1, 2, 3].map(() => 3 + Math.floor(r() * (n - 6))).sort((a, b) => a - b); if (c.every((v, k) => Math.abs(v - best.cuts[k]) <= 14) && pieceFit(s, c) >= best.fit * 0.7) hit += 1; }
+  assert.ok(hit / 40000 < 0.01, `${hit}`);
+  assert.ok(pieceFit(s, [30, 60, 122, 160]) >= best.fit * 0.7, 'cuts at the published domain edges pass');
 });
 
 check('D57 and K109 are over the C-beta line but touch by their side chains', () => {

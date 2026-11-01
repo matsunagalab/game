@@ -4,6 +4,7 @@ import { Flock, plddtStock, Quilt, ribbonGeometry, STOCK } from '../world.js';
 import { closestAtoms, columnDistances, getModel, getPAE, getStructure, loadMSA } from '../science/data.js';
 import { apc, compressColumns, miMatrix, precision, rankPairs, reweight } from '../science/msa.js';
 import { localAtoms } from '../science/gas.js';
+import { tr } from '../i18n.js';
 
 let family = null;
 export function theFamily() {
@@ -23,7 +24,7 @@ export function theFamily() {
   family = { msa, che, D, N, L, X, col2res, idx, posOf, colOf, mapped, valid, touching, atoms, score, shape: localAtoms(che) };
   return family;
 }
-export const name = (f, c) => { const r = f.col2res[c]; return r < 0 ? `column ${c + 1}` : `${f.che.seq[r]}${f.che.nums[r]}`; };
+export const name = (f, c) => { const r = f.col2res[c]; return r < 0 ? tr(`column ${c + 1}`, `${c + 1}列目`) : `${f.che.seq[r]}${f.che.nums[r]}`; };
 export { apc, compressColumns, miMatrix, precision, rankPairs, reweight, getModel, getPAE, getStructure };
 
 const Tm = new THREE.Matrix4();
@@ -51,6 +52,18 @@ export class PaperProtein {
     this.update();
     this.tick = (dt) => { if (this.spin) { this.angle += dt * this.spin; this.update(); } };
     world.ticks.add(this.tick);
+  }
+
+  // Repaints in place, cheaply enough to follow a moving finger.
+  repaint(stock) {
+    this.flock?.paint((i) => stock(i));
+    if (!this.ribbon) return;
+    const a = this.ribbon.geometry.attributes.color, last = this.st.ca.length - 1, count = a.count / 2;
+    for (let k = 0; k < count; k += 1) {
+      const c = stock(Math.round((k / (count - 1)) * last));
+      a.setXYZ(k * 2, c.r, c.g, c.b); a.setXYZ(k * 2 + 1, c.r, c.g, c.b);
+    }
+    a.needsUpdate = true;
   }
 
   matrix() {

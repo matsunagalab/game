@@ -69,6 +69,88 @@ export class Run {
     return off;
   }
 
+  // A move on the board, the same with a finger and a mouse. at(x, y) names what is under the pointer, or null.
+  // hover is for a mouse alone. grab starts a press, move follows it, and a press that did not travel is a tap.
+  // A fine board follows every pixel, for a thing that is placed where the finger stops.
+  board({ at, hover, grab, move, drop, tap, cancel, cursor = 'grab', fine = false }) {
+    const c = this.world.canvas, TRAVEL = fine ? 0 : 8;
+    let held = null, sx = 0, sy = 0, far = false, lit = null, id = null;
+    const paint = (v) => { c.style.cursor = v; };
+    const light = (t) => { if (t !== lit) { lit = t; hover?.(t); } paint(t === null ? '' : cursor); };
+    const d = (e) => {
+      if (e.isPrimary === false) return;
+      const t = at(e.clientX, e.clientY);
+      if (t === null) return;
+      held = t; id = e.pointerId; sx = e.clientX; sy = e.clientY; far = false;
+      try { c.setPointerCapture(e.pointerId); } catch { /* A released pointer cannot be captured. */ }
+      paint('grabbing');
+      grab?.(t, e.clientX, e.clientY);
+    };
+    const m = (e) => {
+      if (held === null) { if (e.pointerType === 'mouse') light(at(e.clientX, e.clientY)); return; }
+      if (e.pointerId !== id) return;
+      if (!far && Math.hypot(e.clientX - sx, e.clientY - sy) < TRAVEL) return;
+      far = true;
+      move?.(held, e.clientX, e.clientY, at(e.clientX, e.clientY));
+    };
+    const u = (e) => {
+      if (held === null || e.pointerId !== id) return;
+      const t = held;
+      held = null;
+      paint('');
+      if (e.type === 'pointercancel') cancel?.(t);
+      else if (far) drop?.(t, e.clientX, e.clientY, at(e.clientX, e.clientY));
+      else tap?.(t, e.clientX, e.clientY);
+    };
+    const leave = () => { if (held === null) light(null); };
+    c.addEventListener('pointerdown', d); c.addEventListener('pointermove', m); c.addEventListener('pointerup', u); c.addEventListener('pointercancel', u); c.addEventListener('pointerleave', leave);
+    const off = () => {
+      c.removeEventListener('pointerdown', d); c.removeEventListener('pointermove', m); c.removeEventListener('pointerup', u); c.removeEventListener('pointercancel', u); c.removeEventListener('pointerleave', leave);
+      paint('');
+    };
+    this.handlers.push(off);
+    return off;
+  }
+
+  // After ms with no action, where() says where to show the hand: { from, to }, both functions of no arguments.
+  idle(where, ms = 6000) {
+    let timer = 0;
+    const show = () => { if (!this.alive) return; const h = where(); if (h) this.ui.hand(h.from, h.to ?? h.from); timer = setTimeout(show, ms); };
+    const arm = () => { clearTimeout(timer); this.ui.handOff(); timer = setTimeout(show, ms); };
+    document.addEventListener('pointerdown', arm, true);
+    arm();
+    return { dispose: () => { clearTimeout(timer); document.removeEventListener('pointerdown', arm, true); this.ui.handOff(); } };
+  }
+
+  // Starts a level of a puzzle chapter.
+  level(goal, done = null, total = null) {
+    this.ui.puzzle(true);
+    this.ui.goal(goal, done, total);
+    this.ui.feedback('');
+    this.bornAt = performance.now();
+    this.game.paintLevel?.(this.chapter, this.stageIndex);
+  }
+
+  // A pause that a tap skips.
+  pause(ms) {
+    return this.hold(new Promise((resolve) => {
+      let timer = 0;
+      const go = () => { clearTimeout(timer); document.removeEventListener('pointerdown', go, true); resolve(); };
+      timer = setTimeout(go, this.world.reduce ? Math.min(ms, 700) : ms);
+      setTimeout(() => { if (this.alive) document.addEventListener('pointerdown', go, true); }, 150);
+      this.handlers.push(() => document.removeEventListener('pointerdown', go, true));
+    }));
+  }
+
+  // A level won: the reward, then on by itself. Lines follow one another, one at a time, and a tap skips each pause.
+  async won(lines, tier, ms = 2200) {
+    if ((this.game.save.tier[this.chapter.id] ?? 0) >= tier) { this.sound.good(tier); this.sound.fold(); } else this.reach(tier);
+    for (const html of [lines].flat()) {
+      this.ui.feedback(html, 'good');
+      await this.pause(ms);
+    }
+  }
+
   // Objects and handlers that belong to one stage of a chapter.
   scoped(x) { (this.scope ??= []).push(x); return x; }
   closeScope() {

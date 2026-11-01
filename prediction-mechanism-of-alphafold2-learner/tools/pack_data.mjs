@@ -8,8 +8,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
-import { apc, entropy, miMatrix, uniformWeights } from '../src/science/msa.js';
-
 const here = dirname(fileURLToPath(import.meta.url));
 const CACHE = process.env.DATA_CACHE || join(homedir(), '.cache/alphafold2-learner-data');
 const AA = 'ACDEFGHIKLMNPQRSTVWY-';
@@ -95,37 +93,13 @@ function packMSA(rows) {
   return { N, L, letters: Buffer.from(bits).toString('base64') };
 }
 
-// Chapter 1's new case: real SH3 sequences. The link between the columns is computed on the whole sample, not the six rows.
-async function miniCase() {
+// Chapter 1's new case: real SH3 sequences. The game computes every link itself, on the whole sample, not on the rows it shows.
+async function sh3Family() {
   const file = join(CACHE, 'PF00018.full.gz');
   if (!existsSync(file) || !existsSync(join(CACHE, '1SHG.pdb'))) return null;
   const sample = await sampleAlignment(file, { reservoir: 12000, keep: 4000, gapMax: 0.2, seed: 11 });
   const st = parsePDB(join(CACHE, '1SHG.pdb'), 'A'), { col2res } = mapToColumns(st.seq, sample.rows);
-  const rows = sample.rows.map(([, s]) => s), N = rows.length, L = rows[0].length, X = new Uint8Array(N * L);
-  rows.forEach((s, r) => { for (let c = 0; c < L; c += 1) { const a = AA.indexOf(s[c]); X[r * L + c] = a < 0 ? 20 : a; } });
-  const w = uniformWeights(N).w, M = apc(miMatrix(X, N, L, w), L);
-  const raw = miMatrix(X, N, L, w);
-  const cb = (i) => { const v = Buffer.from(st.cb, 'base64'), a = new Int16Array(v.buffer, v.byteOffset, v.length / 2); return [a[i * 3] / 100, a[i * 3 + 1] / 100, a[i * 3 + 2] / 100]; };
-  const dist = (a, b) => { const p = cb(col2res[a]), q = cb(col2res[b]); return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); };
-  const H = Array.from({ length: L }, (_, c) => entropy(X, N, L, c, w));
-  let best = null;
-  for (let i = 0; i < L; i += 1) for (let j = i + 6; j < L; j += 1) {
-    if (col2res[i] < 0 || col2res[j] < 0 || H[i] < 1.2 || H[j] < 1.2) continue;
-    if (dist(i, j) < 8 && (!best || M[i * L + j] > best[0])) best = [M[i * L + j], i, j];
-  }
-  const [, a, b] = best;
-  const flat = [...H.keys()].filter((c) => col2res[c] >= 0).sort((x, y) => H[x] - H[y])[0];
-  const other = [...H.keys()].filter((c) => col2res[c] >= 0 && c !== a && c !== b && c !== flat && H[c] > 1.5).sort((x, y) => (raw[x * L + a] + raw[x * L + b]) - (raw[y * L + a] + raw[y * L + b]))[0];
-  // The commonest letter pairs at a and b, two real rows of each.
-  const count = new Map();
-  rows.forEach((s) => { const k = s[a] + s[b]; count.set(k, (count.get(k) ?? 0) + 1); });
-  const top = [...count.entries()].filter(([k]) => !k.includes('-')).sort((x, y) => y[1] - x[1]);
-  const lead = []; const usedA = new Set(), usedB = new Set();
-  for (const [k] of top) { if (!usedA.has(k[0]) && !usedB.has(k[1])) { lead.push(k); usedA.add(k[0]); usedB.add(k[1]); } if (lead.length === 3) break; }
-  const picked = [];
-  for (const k of lead) picked.push(...rows.filter((s) => s[a] + s[b] === k && !s[a].includes('-') && s[other] !== '-' && s[flat] !== '-').slice(0, 2));
-  const name = (c) => st.seq[col2res[c]] + st.nums[col2res[c]];
-  return { rows: picked.map((s) => [s[a], s[flat], s[other], s[b]].join('')), names: [name(a), name(flat), name(other), name(b)], mi: { pair: raw[a * L + b], flat: raw[a * L + flat], other: raw[a * L + other] }, d: dist(a, b), n: sample.seen, N };
+  return { ...packMSA(sample.rows), col2res, nSeenInFamily: sample.seen, pfam: 'PF00018' };
 }
 
 const pfam = 'PF00072';
@@ -136,6 +110,7 @@ console.log('alignment', sample.seen, 'sequences; sampled', sample.sampled, 'pas
 
 const structures = {
   che3: { ...che, id: '3CHY', chain: 'A', what: 'CheY, E. coli, X-ray 1.66 A' },
+  sh3g: { ...parsePDB(join(CACHE, '1SHG.pdb'), 'A'), id: '1SHG', chain: 'A', what: 'alpha-spectrin SH3 domain, X-ray 1.8 A' },
   ake4: { ...parsePDB(join(CACHE, '4AKE.pdb'), 'A'), id: '4AKE', chain: 'A', what: 'adenylate kinase, open, no ligand, X-ray 2.2 A' },
   ake1: { ...parsePDB(join(CACHE, '1AKE.pdb'), 'A'), id: '1AKE', chain: 'A', what: 'adenylate kinase, closed, with inhibitor Ap5A, X-ray 2.0 A' },
   cam1: { ...parsePDB(join(CACHE, '1CLL.pdb'), 'A'), id: '1CLL', chain: 'A', what: 'calmodulin, calcium bound, extended, X-ray 1.7 A' },
@@ -153,8 +128,8 @@ for (const acc of ['P0AE67', 'P69441', 'P0DP23', 'P04637', 'Q13542']) {
   afdb[acc].head = head.slice(0, 160);
 }
 
-const mini = await miniCase();
-console.log('mini case', JSON.stringify(mini));
+const sh3 = await sh3Family();
+console.log('SH3 sample', sh3?.N, 'sequences', sh3?.L, 'columns, of', sh3?.nSeenInFamily);
 
 const paes = {};
 for (const acc of ['P0AE67', 'P0DP23', 'P69441']) {
@@ -187,7 +162,7 @@ function closestAtoms(file, chain) {
 }
 
 const out = {
-  mini, paes, heavy: closestAtoms(join(CACHE, '3CHY.pdb'), 'A'),
+  sh3, paes, heavy: closestAtoms(join(CACHE, '3CHY.pdb'), 'A'),
   pfam, msa: packMSA(sample.rows), col2res, nSeenInFamily: sample.seen, structures, afdb,
 };
 const path = join(here, '../src/data/bundle.js');
